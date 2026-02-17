@@ -25,7 +25,7 @@ import metricsService from './services/monitoring/metricsService';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
@@ -180,12 +180,20 @@ async function startServer() {
       metricsService.cleanup();
     }, 60 * 60 * 1000); // Каждый час
     
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Server running on http://localhost:${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`📈 Metrics: http://localhost:${PORT}/metrics`);
-      console.log(`📈 Metrics JSON: http://localhost:${PORT}/metrics/json`);
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`📊 Health check: /health`);
+      console.log(`📈 Metrics: /metrics`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+    
+    server.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use`);
+      } else {
+        console.error('❌ Server error:', error);
+      }
+      process.exit(1);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
