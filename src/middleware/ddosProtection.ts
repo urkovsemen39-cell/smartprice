@@ -10,6 +10,20 @@ export const ddosProtection = async (req: Request, res: Response, next: NextFunc
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const endpoint = req.path;
 
+    // Whitelist для публичных endpoints - пропускаем без проверок
+    const whitelistedPaths = [
+      '/health',
+      '/api/health',
+      '/metrics',
+      '/api/metrics',
+      '/',
+      '/favicon.ico'
+    ];
+
+    if (whitelistedPaths.includes(endpoint)) {
+      return next();
+    }
+
     // Регистрация активного IP
     await ddosProtectionService.registerActiveIP(ip);
 
