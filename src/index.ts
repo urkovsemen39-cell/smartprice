@@ -80,28 +80,37 @@ app.use(session({
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
-  message: 'Too many requests from this IP, please try again later.',
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests from this IP, please try again later.' });
+  },
 });
 
 // Rate limiting - строгий для авторизации
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // только 5 попыток входа за 15 минут
-  message: 'Too many login attempts, please try again later.',
+  message: { error: 'Too many login attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // не считаем успешные попытки
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many login attempts, please try again later.' });
+  },
 });
 
 // Rate limiting для suggestions (автодополнение)
 const suggestionsLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 30, // 30 запросов в минуту
-  message: 'Too many suggestion requests, please slow down.',
+  message: { error: 'Too many suggestion requests, please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many suggestion requests, please slow down.' });
+  },
 });
 
 app.use('/api/', generalLimiter);

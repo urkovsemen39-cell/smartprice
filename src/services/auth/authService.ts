@@ -53,8 +53,18 @@ export class AuthService {
       };
     }
 
+    // Проверка на только цифры
+    if (/^\d+$/.test(password)) {
+      return { valid: false, message: 'Password cannot contain only numbers' };
+    }
+
+    // Проверка на только буквы
+    if (/^[a-zA-Z]+$/.test(password)) {
+      return { valid: false, message: 'Password must contain numbers or special characters' };
+    }
+
     // Проверка на распространенные пароли
-    const commonPasswords = ['password', '12345678', 'qwerty', 'abc123', 'password123'];
+    const commonPasswords = ['password', '12345678', '123456789', 'qwerty', 'abc123', 'password123', 'qwerty123'];
     if (commonPasswords.includes(password.toLowerCase())) {
       return { valid: false, message: 'Password is too common, please choose a stronger one' };
     }
