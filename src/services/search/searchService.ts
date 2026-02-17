@@ -77,7 +77,7 @@ export async function searchProducts(params: SearchParams, userId?: number): Pro
     };
 
     // Кэшируем результаты с учетом популярности
-    const popularity = await analyticsService.getQueryPopularity(query);
+    const popularity = await analyticsService.getQueryPopularityCount(query);
     await cacheService.cacheSearchResults(query, filters, sort, response, popularity);
 
     // Трекаем поиск
