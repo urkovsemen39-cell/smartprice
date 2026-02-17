@@ -391,7 +391,7 @@ class IntrusionPreventionService {
     const result = await pool.query(
       `SELECT COUNT(*) as count 
        FROM login_attempts 
-       WHERE ip_address = $1 AND success = false AND created_at > NOW() - INTERVAL '${seconds} seconds'`,
+       WHERE ip_address = $1 AND success = false AND attempted_at > NOW() - INTERVAL '${seconds} seconds'`,
       [ip]
     );
     return parseInt(result.rows[0].count);

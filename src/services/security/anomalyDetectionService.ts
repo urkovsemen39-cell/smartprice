@@ -36,9 +36,10 @@ class AnomalyDetectionService {
     );
 
     const loginAttempts = await pool.query(
-      `SELECT ip_address, created_at
-       FROM login_attempts
-       WHERE user_id = $1 AND success = true AND created_at > NOW() - INTERVAL '${this.LEARNING_PERIOD_DAYS} days'`,
+      `SELECT la.ip_address, la.attempted_at as created_at
+       FROM login_attempts la
+       JOIN users u ON la.email = u.email
+       WHERE u.id = $1 AND la.success = true AND la.attempted_at > NOW() - INTERVAL '${this.LEARNING_PERIOD_DAYS} days'`,
       [userId]
     );
 
@@ -342,8 +343,9 @@ class AnomalyDetectionService {
   private async getRecentFailedAttempts(userId: number, seconds: number): Promise<number> {
     const result = await pool.query(
       `SELECT COUNT(*) as count
-       FROM login_attempts
-       WHERE user_id = $1 AND success = false AND created_at > NOW() - INTERVAL '${seconds} seconds'`,
+       FROM login_attempts la
+       JOIN users u ON la.email = u.email
+       WHERE u.id = $1 AND la.success = false AND la.attempted_at > NOW() - INTERVAL '${seconds} seconds'`,
       [userId]
     );
     return parseInt(result.rows[0].count);
