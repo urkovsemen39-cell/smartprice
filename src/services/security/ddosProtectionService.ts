@@ -18,8 +18,8 @@ interface RateLimitConfig {
 
 class DDoSProtectionService {
   private readonly WINDOW_SIZE = 60; // 60 секунд
-  private readonly SUSPICIOUS_THRESHOLD = 100; // запросов в минуту с одного IP
-  private readonly GLOBAL_THRESHOLD = 10000; // общих запросов в минуту
+  private readonly SUSPICIOUS_THRESHOLD = 1000; // запросов в минуту с одного IP (увеличено с 100)
+  private readonly GLOBAL_THRESHOLD = 50000; // общих запросов в минуту (увеличено с 10000)
 
   /**
    * Проверка на DDoS атаку
