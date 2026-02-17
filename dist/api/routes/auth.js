@@ -34,7 +34,10 @@ router.post('/register', async (req, res) => {
         if (!emailRegex.test(email)) {
             return res.status(400).json({ error: 'Invalid email format' });
         }
-        const result = await authService_1.default.register(email, password, name);
+        // Получаем IP и User Agent
+        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const result = await authService_1.default.register(email, password, name, ip, userAgent);
         res.json(result);
     }
     catch (error) {
@@ -54,7 +57,11 @@ router.post('/login', async (req, res) => {
         if (!password || typeof password !== 'string') {
             return res.status(400).json({ error: 'Valid password is required' });
         }
-        const result = await authService_1.default.login(email, password);
+        // Получаем IP и User Agent для логирования
+        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const sessionId = req.sessionID;
+        const result = await authService_1.default.login(email, password, ip, userAgent, sessionId);
         res.json(result);
     }
     catch (error) {

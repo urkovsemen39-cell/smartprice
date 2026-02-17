@@ -64,7 +64,7 @@ async function searchProducts(params, userId) {
             totalPages,
         };
         // Кэшируем результаты с учетом популярности
-        const popularity = await analyticsService_1.default.getQueryPopularity(query);
+        const popularity = await analyticsService_1.default.getQueryPopularityCount(query);
         await cacheService_1.default.cacheSearchResults(query, filters, sort, response, popularity);
         // Трекаем поиск
         await analyticsService_1.default.trackSearch(userId || null, query, filters, total);

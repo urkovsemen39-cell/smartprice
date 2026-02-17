@@ -2,7 +2,7 @@
 // Email сервис для отправки уведомлений
 // Поддерживает SendGrid, AWS SES, и Nodemailer
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.EmailService = void 0;
+exports.emailService = exports.EmailService = void 0;
 class EmailService {
     constructor() {
         this.provider = process.env.EMAIL_PROVIDER || 'none';
@@ -56,6 +56,42 @@ class EmailService {
             subject,
             html,
             text: `Добро пожаловать в SmartPrice! Начните искать товары по лучшей цене.`,
+        });
+    }
+    async sendVerificationEmail(email, code) {
+        const subject = 'Подтверждение email - SmartPrice';
+        const html = `
+      <h2>Подтверждение email</h2>
+      <p>Ваш код подтверждения:</p>
+      <h1 style="font-size: 32px; letter-spacing: 8px; color: #3B82F6;">${code}</h1>
+      <p>Код действителен в течение 15 минут.</p>
+      <p style="color: #666; font-size: 12px;">Если вы не регистрировались на SmartPrice, проигнорируйте это письмо.</p>
+    `;
+        return this.send({
+            to: email,
+            subject,
+            html,
+            text: `Ваш код подтверждения: ${code}. Код действителен 15 минут.`,
+        });
+    }
+    async sendNewSessionAlert(email, ip, userAgent) {
+        const subject = 'Новый вход в аккаунт - SmartPrice';
+        const html = `
+      <h2>Обнаружен новый вход в ваш аккаунт</h2>
+      <p>Детали входа:</p>
+      <ul>
+        <li><strong>IP адрес:</strong> ${ip}</li>
+        <li><strong>Устройство:</strong> ${userAgent}</li>
+        <li><strong>Время:</strong> ${new Date().toLocaleString('ru-RU')}</li>
+      </ul>
+      <p>Если это были не вы, немедленно смените пароль и завершите все сессии в настройках аккаунта.</p>
+      <p><a href="${process.env.FRONTEND_URL}/profile/sessions" style="background-color: #EF4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Управление сессиями</a></p>
+    `;
+        return this.send({
+            to: email,
+            subject,
+            html,
+            text: `Обнаружен новый вход в ваш аккаунт с IP ${ip}. Если это были не вы, смените пароль.`,
         });
     }
     async send(options) {
@@ -180,4 +216,5 @@ class EmailService {
     }
 }
 exports.EmailService = EmailService;
-exports.default = new EmailService();
+exports.emailService = new EmailService();
+exports.default = exports.emailService;

@@ -3,97 +3,235 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CacheService = void 0;
 const redis_1 = __importDefault(require("../../config/redis"));
-const CACHE_TTL = {
-    popular: 900, // 15 минут для популярных запросов
-    normal: 1800, // 30 минут для обычных
-    rare: 3600, // 60 минут для редких
-    product: 3600, // 1 час для деталей товара
-    suggestions: 86400 // 24 часа для автодополнения
-};
+/**
+ * Сервис для кэширования данных
+ */
 class CacheService {
-    hashQuery(query) {
-        return query.toLowerCase().trim().replace(/\s+/g, '_');
-    }
-    async cacheSearchResults(query, filters, sort, results, popularity = 'normal') {
+    /**
+     * Получить данные из кэша
+     */
+    async get(key) {
         try {
-            const key = `search:${this.hashQuery(query)}:${JSON.stringify(filters)}:${sort}`;
-            const ttl = CACHE_TTL[popularity];
-            await redis_1.default.setEx(key, ttl, JSON.stringify(results));
+            const data = await redis_1.default.get(key);
+            if (!data)
+                return null;
+            return JSON.parse(data);
         }
         catch (error) {
-            console.error('❌ Cache write error:', error);
+            console.error('❌ Cache get error:', error);
+            return null;
         }
     }
-    async getCachedSearchResults(query, filters, sort) {
+    /**
+     * Сохранить данные в кэш
+     */
+    async set(key, value, ttlSeconds = 3600) {
         try {
-            const key = `search:${this.hashQuery(query)}:${JSON.stringify(filters)}:${sort}`;
-            const cached = await redis_1.default.get(key);
-            if (cached) {
-                return JSON.parse(cached);
+            const data = JSON.stringify(value);
+            await redis_1.default.setEx(key, ttlSeconds, data);
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Cache set error:', error);
+            return false;
+        }
+    }
+    /**
+     * Удалить данные из кэша
+     */
+    async delete(key) {
+        try {
+            await redis_1.default.del(key);
+            return true;
+        }
+        catch (error) {
+            console.error('❌ Cache delete error:', error);
+            return false;
+        }
+    }
+    /**
+     * Удалить все ключи по паттерну
+     */
+    async deletePattern(pattern) {
+        try {
+            const keys = await redis_1.default.keys(pattern);
+            if (keys.length === 0)
+                return 0;
+            await redis_1.default.del(keys);
+            return keys.length;
+        }
+        catch (error) {
+            console.error('❌ Cache delete pattern error:', error);
+            return 0;
+        }
+    }
+    /**
+     * Проверить существование ключа
+     */
+    async exists(key) {
+        try {
+            const result = await redis_1.default.exists(key);
+            return result === 1;
+        }
+        catch (error) {
+            console.error('❌ Cache exists error:', error);
+            return false;
+        }
+    }
+    /**
+     * Получить или установить (если не существует)
+     */
+    async getOrSet(key, fetchFn, ttlSeconds = 3600) {
+        try {
+            // Пытаемся получить из кэша
+            const cached = await this.get(key);
+            if (cached !== null) {
+                return cached;
             }
-            return null;
+            // Если нет в кэше - получаем данные
+            const data = await fetchFn();
+            // Сохраняем в кэш
+            await this.set(key, data, ttlSeconds);
+            return data;
         }
         catch (error) {
-            console.error('❌ Cache read error:', error);
-            return null;
-        }
-    }
-    async cacheProduct(productId, product) {
-        try {
-            const key = `product:${productId}`;
-            await redis_1.default.setEx(key, CACHE_TTL.product, JSON.stringify(product));
-        }
-        catch (error) {
-            console.error('❌ Cache product error:', error);
-        }
-    }
-    async getCachedProduct(productId) {
-        try {
-            const cached = await redis_1.default.get(`product:${productId}`);
-            return cached ? JSON.parse(cached) : null;
-        }
-        catch (error) {
-            console.error('❌ Get cached product error:', error);
+            console.error('❌ Cache getOrSet error:', error);
             return null;
         }
     }
-    async cacheSuggestions(prefix, suggestions) {
+    /**
+     * Инкремент значения
+     */
+    async increment(key, ttlSeconds) {
         try {
-            const key = `suggestions:${this.hashQuery(prefix)}`;
-            await redis_1.default.setEx(key, CACHE_TTL.suggestions, JSON.stringify(suggestions));
+            const value = await redis_1.default.incr(key);
+            if (ttlSeconds && value === 1) {
+                await redis_1.default.expire(key, ttlSeconds);
+            }
+            return value;
         }
         catch (error) {
-            console.error('❌ Cache suggestions error:', error);
+            console.error('❌ Cache increment error:', error);
+            return 0;
         }
     }
-    async getCachedSuggestions(prefix) {
+    /**
+     * Получить TTL ключа
+     */
+    async getTTL(key) {
         try {
-            const cached = await redis_1.default.get(`suggestions:${this.hashQuery(prefix)}`);
-            return cached ? JSON.parse(cached) : null;
+            return await redis_1.default.ttl(key);
         }
         catch (error) {
-            console.error('❌ Get cached suggestions error:', error);
-            return null;
+            console.error('❌ Cache getTTL error:', error);
+            return -1;
         }
     }
-    async invalidateProduct(productId) {
-        try {
-            await redis_1.default.del(`product:${productId}`);
-        }
-        catch (error) {
-            console.error('❌ Cache invalidation error:', error);
-        }
+    /**
+     * Кэширование результатов поиска
+     */
+    async cacheSearchResults(query, filters, sort, results, popularity) {
+        const key = this.generateSearchKey(query, filters, sort);
+        // TTL зависит от популярности: популярные запросы кэшируем дольше
+        const ttl = popularity && popularity > 10 ? 7200 : 3600; // 2 часа или 1 час
+        await this.set(key, results, ttl);
     }
-    async clearAll() {
+    /**
+     * Получение кэшированных результатов поиска
+     */
+    async getCachedSearchResults(query, filters, sort) {
+        const key = this.generateSearchKey(query, filters, sort);
+        return await this.get(key);
+    }
+    /**
+     * Кэширование подсказок для автодополнения
+     */
+    async cacheSuggestions(query, suggestions) {
+        const key = `suggestions:${query.toLowerCase()}`;
+        await this.set(key, suggestions, 1800); // 30 минут
+    }
+    /**
+     * Получение кэшированных подсказок
+     */
+    async getCachedSuggestions(query) {
+        const key = `suggestions:${query.toLowerCase()}`;
+        return await this.get(key);
+    }
+    /**
+     * Кэширование данных пользователя
+     */
+    async cacheUserData(userId, data) {
+        const key = `user:${userId}`;
+        await this.set(key, data, 1800); // 30 минут
+    }
+    /**
+     * Получение кэшированных данных пользователя
+     */
+    async getCachedUserData(userId) {
+        const key = `user:${userId}`;
+        return await this.get(key);
+    }
+    /**
+     * Инвалидация кэша пользователя
+     */
+    async invalidateUserCache(userId) {
+        const key = `user:${userId}`;
+        await this.delete(key);
+    }
+    /**
+     * Кэширование избранного пользователя
+     */
+    async cacheFavorites(userId, favorites) {
+        const key = `favorites:${userId}`;
+        await this.set(key, favorites, 600); // 10 минут
+    }
+    /**
+     * Получение кэшированного избранного
+     */
+    async getCachedFavorites(userId) {
+        const key = `favorites:${userId}`;
+        return await this.get(key);
+    }
+    /**
+     * Инвалидация кэша избранного
+     */
+    async invalidateFavoritesCache(userId) {
+        const key = `favorites:${userId}`;
+        await this.delete(key);
+    }
+    /**
+     * Генерация ключа для поиска
+     */
+    generateSearchKey(query, filters, sort) {
+        const filtersStr = JSON.stringify(filters || {});
+        const sortStr = sort || 'smart';
+        return `search:${query}:${filtersStr}:${sortStr}`;
+    }
+    /**
+     * Очистка всего кэша (осторожно!)
+     */
+    async flushAll() {
         try {
             await redis_1.default.flushAll();
+            console.log('✅ Cache flushed');
         }
         catch (error) {
-            console.error('❌ Cache clear error:', error);
+            console.error('❌ Cache flush error:', error);
+        }
+    }
+    /**
+     * Получение статистики кэша
+     */
+    async getStats() {
+        try {
+            const info = await redis_1.default.info('stats');
+            return info;
+        }
+        catch (error) {
+            console.error('❌ Cache stats error:', error);
+            return null;
         }
     }
 }
-exports.CacheService = CacheService;
 exports.default = new CacheService();

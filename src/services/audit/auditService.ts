@@ -13,7 +13,28 @@ export type AuditAction =
   | 'price_tracking.create'
   | 'price_tracking.delete'
   | 'session.create'
-  | 'session.terminate';
+  | 'session.terminate'
+  // Ultimate Security Actions
+  | 'credential_stuffing_detected'
+  | 'account_takeover_suspected'
+  | 'bot_activity_detected'
+  | 'anomaly_detected'
+  | 'account_locked_anomaly'
+  | 'ddos_attempt'
+  | 'emergency_mode_enabled'
+  | 'country_blocked'
+  | 'ip_blocked'
+  | 'ip_unblocked'
+  | 'intrusion_detected'
+  | 'jwt_secret_rotated'
+  | 'session_secret_rotated'
+  | 'database_password_rotated'
+  | 'security_alert_created'
+  | 'security_incident_created'
+  | 'security_incident_updated'
+  | 'security_alert_acknowledged'
+  | 'security_alert_resolved'
+  | 'vulnerability_scan';
 
 interface AuditLogEntry {
   userId?: number;

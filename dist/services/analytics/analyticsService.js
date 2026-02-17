@@ -75,6 +75,18 @@ class AnalyticsService {
             return 'normal';
         }
     }
+    async getQueryPopularityCount(query) {
+        try {
+            const result = await database_1.default.query('SELECT search_count FROM popular_queries WHERE query = $1', [query.toLowerCase().trim()]);
+            if (result.rows.length === 0)
+                return 0;
+            return result.rows[0].search_count;
+        }
+        catch (error) {
+            console.error('❌ Get query popularity count error:', error);
+            return 0;
+        }
+    }
 }
 exports.AnalyticsService = AnalyticsService;
 exports.default = new AnalyticsService();

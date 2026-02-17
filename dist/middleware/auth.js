@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.authenticateToken = void 0;
 exports.authMiddleware = authMiddleware;
 exports.optionalAuthMiddleware = optionalAuthMiddleware;
 const authService_1 = __importDefault(require("../services/auth/authService"));
@@ -42,3 +43,5 @@ async function optionalAuthMiddleware(req, res, next) {
         next();
     }
 }
+// Alias for compatibility
+exports.authenticateToken = authMiddleware;
