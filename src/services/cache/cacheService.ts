@@ -1,107 +1,231 @@
 import redisClient from '../../config/redis';
-import { Product, SearchResponse } from '../../types';
 
-const CACHE_TTL = {
-  popular: 900,      // 15 минут для популярных запросов
-  normal: 1800,      // 30 минут для обычных
-  rare: 3600,        // 60 минут для редких
-  product: 3600,     // 1 час для деталей товара
-  suggestions: 86400 // 24 часа для автодополнения
-};
-
-export class CacheService {
-  private hashQuery(query: string): string {
-    return query.toLowerCase().trim().replace(/\s+/g, '_');
-  }
-
-  async cacheSearchResults(
-    query: string,
-    filters: any,
-    sort: string,
-    results: SearchResponse,
-    popularity: 'popular' | 'normal' | 'rare' = 'normal'
-  ): Promise<void> {
+/**
+ * Сервис для кэширования данных
+ */
+class CacheService {
+  /**
+   * Получить данные из кэша
+   */
+  async get<T>(key: string): Promise<T | null> {
     try {
-      const key = `search:${this.hashQuery(query)}:${JSON.stringify(filters)}:${sort}`;
-      const ttl = CACHE_TTL[popularity];
-      
-      await redisClient.setEx(key, ttl, JSON.stringify(results));
+      const data = await redisClient.get(key);
+      if (!data) return null;
+      return JSON.parse(data) as T;
     } catch (error) {
-      console.error('❌ Cache write error:', error);
+      console.error('❌ Cache get error:', error);
+      return null;
     }
   }
 
-  async getCachedSearchResults(
-    query: string,
-    filters: any,
-    sort: string
-  ): Promise<SearchResponse | null> {
+  /**
+   * Сохранить данные в кэш
+   */
+  async set(key: string, value: any, ttlSeconds: number = 3600): Promise<boolean> {
     try {
-      const key = `search:${this.hashQuery(query)}:${JSON.stringify(filters)}:${sort}`;
-      const cached = await redisClient.get(key);
+      const data = JSON.stringify(value);
+      await redisClient.setEx(key, ttlSeconds, data);
+      return true;
+    } catch (error) {
+      console.error('❌ Cache set error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Удалить данные из кэша
+   */
+  async delete(key: string): Promise<boolean> {
+    try {
+      await redisClient.del(key);
+      return true;
+    } catch (error) {
+      console.error('❌ Cache delete error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Удалить все ключи по паттерну
+   */
+  async deletePattern(pattern: string): Promise<number> {
+    try {
+      const keys = await redisClient.keys(pattern);
+      if (keys.length === 0) return 0;
       
-      if (cached) {
-        return JSON.parse(cached);
+      await redisClient.del(keys);
+      return keys.length;
+    } catch (error) {
+      console.error('❌ Cache delete pattern error:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Проверить существование ключа
+   */
+  async exists(key: string): Promise<boolean> {
+    try {
+      const result = await redisClient.exists(key);
+      return result === 1;
+    } catch (error) {
+      console.error('❌ Cache exists error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Получить или установить (если не существует)
+   */
+  async getOrSet<T>(
+    key: string,
+    fetchFn: () => Promise<T>,
+    ttlSeconds: number = 3600
+  ): Promise<T | null> {
+    try {
+      // Пытаемся получить из кэша
+      const cached = await this.get<T>(key);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Если нет в кэше - получаем данные
+      const data = await fetchFn();
+      
+      // Сохраняем в кэш
+      await this.set(key, data, ttlSeconds);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Cache getOrSet error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Инкремент значения
+   */
+  async increment(key: string, ttlSeconds?: number): Promise<number> {
+    try {
+      const value = await redisClient.incr(key);
+      
+      if (ttlSeconds && value === 1) {
+        await redisClient.expire(key, ttlSeconds);
       }
       
-      return null;
+      return value;
     } catch (error) {
-      console.error('❌ Cache read error:', error);
-      return null;
+      console.error('❌ Cache increment error:', error);
+      return 0;
     }
   }
 
-  async cacheProduct(productId: string, product: Product): Promise<void> {
+  /**
+   * Получить TTL ключа
+   */
+  async getTTL(key: string): Promise<number> {
     try {
-      const key = `product:${productId}`;
-      await redisClient.setEx(key, CACHE_TTL.product, JSON.stringify(product));
+      return await redisClient.ttl(key);
     } catch (error) {
-      console.error('❌ Cache product error:', error);
+      console.error('❌ Cache getTTL error:', error);
+      return -1;
     }
   }
 
-  async getCachedProduct(productId: string): Promise<Product | null> {
-    try {
-      const cached = await redisClient.get(`product:${productId}`);
-      return cached ? JSON.parse(cached) : null;
-    } catch (error) {
-      console.error('❌ Get cached product error:', error);
-      return null;
-    }
+  /**
+   * Кэширование результатов поиска
+   */
+  async cacheSearchResults(query: string, filters: any, results: any): Promise<void> {
+    const key = this.generateSearchKey(query, filters);
+    await this.set(key, results, 3600); // 1 час
   }
 
-  async cacheSuggestions(prefix: string, suggestions: string[]): Promise<void> {
-    try {
-      const key = `suggestions:${this.hashQuery(prefix)}`;
-      await redisClient.setEx(key, CACHE_TTL.suggestions, JSON.stringify(suggestions));
-    } catch (error) {
-      console.error('❌ Cache suggestions error:', error);
-    }
+  /**
+   * Получение кэшированных результатов поиска
+   */
+  async getCachedSearchResults(query: string, filters: any): Promise<any | null> {
+    const key = this.generateSearchKey(query, filters);
+    return await this.get(key);
   }
 
-  async getCachedSuggestions(prefix: string): Promise<string[] | null> {
-    try {
-      const cached = await redisClient.get(`suggestions:${this.hashQuery(prefix)}`);
-      return cached ? JSON.parse(cached) : null;
-    } catch (error) {
-      console.error('❌ Get cached suggestions error:', error);
-      return null;
-    }
+  /**
+   * Кэширование данных пользователя
+   */
+  async cacheUserData(userId: number, data: any): Promise<void> {
+    const key = `user:${userId}`;
+    await this.set(key, data, 1800); // 30 минут
   }
 
-  async invalidateProduct(productId: string): Promise<void> {
-    try {
-      await redisClient.del(`product:${productId}`);
-    } catch (error) {
-      console.error('❌ Cache invalidation error:', error);
-    }
+  /**
+   * Получение кэшированных данных пользователя
+   */
+  async getCachedUserData(userId: number): Promise<any | null> {
+    const key = `user:${userId}`;
+    return await this.get(key);
   }
 
-  async clearAll(): Promise<void> {
+  /**
+   * Инвалидация кэша пользователя
+   */
+  async invalidateUserCache(userId: number): Promise<void> {
+    const key = `user:${userId}`;
+    await this.delete(key);
+  }
+
+  /**
+   * Кэширование избранного пользователя
+   */
+  async cacheFavorites(userId: number, favorites: any[]): Promise<void> {
+    const key = `favorites:${userId}`;
+    await this.set(key, favorites, 600); // 10 минут
+  }
+
+  /**
+   * Получение кэшированного избранного
+   */
+  async getCachedFavorites(userId: number): Promise<any[] | null> {
+    const key = `favorites:${userId}`;
+    return await this.get(key);
+  }
+
+  /**
+   * Инвалидация кэша избранного
+   */
+  async invalidateFavoritesCache(userId: number): Promise<void> {
+    const key = `favorites:${userId}`;
+    await this.delete(key);
+  }
+
+  /**
+   * Генерация ключа для поиска
+   */
+  private generateSearchKey(query: string, filters: any): string {
+    const filtersStr = JSON.stringify(filters || {});
+    return `search:${query}:${filtersStr}`;
+  }
+
+  /**
+   * Очистка всего кэша (осторожно!)
+   */
+  async flushAll(): Promise<void> {
     try {
       await redisClient.flushAll();
+      console.log('✅ Cache flushed');
     } catch (error) {
-      console.error('❌ Cache clear error:', error);
+      console.error('❌ Cache flush error:', error);
+    }
+  }
+
+  /**
+   * Получение статистики кэша
+   */
+  async getStats(): Promise<any> {
+    try {
+      const info = await redisClient.info('stats');
+      return info;
+    } catch (error) {
+      console.error('❌ Cache stats error:', error);
+      return null;
     }
   }
 }

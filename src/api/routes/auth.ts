@@ -56,7 +56,11 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Valid password is required' });
     }
 
-    const result = await authService.login(email, password);
+    // Получаем IP и User Agent для логирования
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await authService.login(email, password, ip, userAgent);
     res.json(result);
   } catch (error) {
     console.error('❌ Login error:', error);

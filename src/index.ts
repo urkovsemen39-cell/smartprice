@@ -20,6 +20,12 @@ import metricsRoutes from './api/routes/metrics';
 import priceCheckJob from './services/jobs/priceCheckJob';
 import priceHistoryJob from './services/jobs/priceHistoryJob';
 import { metricsMiddleware, errorMetricsMiddleware } from './middleware/metrics';
+import { 
+  ipRateLimitMiddleware, 
+  suspiciousPatternMiddleware, 
+  csrfProtectionMiddleware,
+  securityHeadersMiddleware 
+} from './middleware/security';
 import metricsService from './services/monitoring/metricsService';
 
 dotenv.config();
@@ -29,6 +35,9 @@ const PORT = Number(process.env.PORT) || 3001;
 
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
+
+// Security headers (должны быть первыми)
+app.use(securityHeadersMiddleware);
 
 // CORS configuration with credentials
 app.use(cors({
@@ -40,6 +49,15 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+
+// Security middleware
+app.use(suspiciousPatternMiddleware);
+app.use(csrfProtectionMiddleware);
+
+// IP-based rate limiting (глобальный)
+if (process.env.NODE_ENV === 'production') {
+  app.use(ipRateLimitMiddleware);
+}
 
 // Metrics middleware (должен быть до роутов)
 app.use(metricsMiddleware);

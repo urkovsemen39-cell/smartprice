@@ -11,6 +11,22 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Login attempts table (для безопасности и аудита)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  success BOOLEAN NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  attempted_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_success ON login_attempts(success, attempted_at DESC);
+
 -- Favorites table
 CREATE TABLE IF NOT EXISTS favorites (
   id SERIAL PRIMARY KEY,
@@ -27,6 +43,8 @@ CREATE TABLE IF NOT EXISTS favorites (
 );
 
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_product_id ON favorites(product_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_marketplace ON favorites(marketplace);
 
 -- Search history table
 CREATE TABLE IF NOT EXISTS search_history (
@@ -40,6 +58,7 @@ CREATE TABLE IF NOT EXISTS search_history (
 
 CREATE INDEX IF NOT EXISTS idx_search_history_user_id ON search_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history(searched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_history_query ON search_history USING gin(to_tsvector('russian', query));
 
 -- Price tracking table
 CREATE TABLE IF NOT EXISTS price_tracking (
@@ -58,7 +77,9 @@ CREATE TABLE IF NOT EXISTS price_tracking (
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_tracking_user_id ON price_tracking(user_id);
-CREATE INDEX IF NOT EXISTS idx_price_tracking_active ON price_tracking(active);
+CREATE INDEX IF NOT EXISTS idx_price_tracking_active ON price_tracking(active) WHERE active = true;
+CREATE INDEX IF NOT EXISTS idx_price_tracking_product ON price_tracking(product_id, marketplace);
+CREATE INDEX IF NOT EXISTS idx_price_tracking_notified ON price_tracking(notified, active) WHERE active = true AND notified = false;
 
 -- Price history table
 CREATE TABLE IF NOT EXISTS price_history (
@@ -71,6 +92,7 @@ CREATE TABLE IF NOT EXISTS price_history (
 
 CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, marketplace);
 CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON price_history(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_product_date ON price_history(product_id, marketplace, recorded_at DESC);
 
 -- Click analytics table
 CREATE TABLE IF NOT EXISTS click_analytics (
@@ -84,6 +106,7 @@ CREATE TABLE IF NOT EXISTS click_analytics (
 
 CREATE INDEX IF NOT EXISTS idx_click_analytics_clicked_at ON click_analytics(clicked_at DESC);
 CREATE INDEX IF NOT EXISTS idx_click_analytics_product ON click_analytics(product_id);
+CREATE INDEX IF NOT EXISTS idx_click_analytics_user_id ON click_analytics(user_id) WHERE user_id IS NOT NULL;
 
 -- Popular queries table
 CREATE TABLE IF NOT EXISTS popular_queries (
@@ -94,6 +117,7 @@ CREATE TABLE IF NOT EXISTS popular_queries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_popular_queries_count ON popular_queries(search_count DESC);
+CREATE INDEX IF NOT EXISTS idx_popular_queries_last_searched ON popular_queries(last_searched DESC);
 `;
 
 export async function initializeDatabase() {
