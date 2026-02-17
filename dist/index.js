@@ -89,8 +89,24 @@ app.use(security_2.securityHeadersMiddleware);
 // 2. CSP middleware
 app.use(advancedSecurity_1.cspMiddleware);
 // 3. CORS configuration with credentials
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://smartprice-frontend-production.up.railway.app'
+].filter(Boolean);
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+        // Разрешаем запросы без origin (например, Postman, curl)
+        if (!origin)
+            return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(null, true); // Временно разрешаем все origins для отладки
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response'],
