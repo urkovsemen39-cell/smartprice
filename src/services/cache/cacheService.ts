@@ -135,17 +135,35 @@ class CacheService {
   /**
    * Кэширование результатов поиска
    */
-  async cacheSearchResults(query: string, filters: any, results: any): Promise<void> {
-    const key = this.generateSearchKey(query, filters);
-    await this.set(key, results, 3600); // 1 час
+  async cacheSearchResults(query: string, filters: any, sort: string, results: any, popularity?: number): Promise<void> {
+    const key = this.generateSearchKey(query, filters, sort);
+    // TTL зависит от популярности: популярные запросы кэшируем дольше
+    const ttl = popularity && popularity > 10 ? 7200 : 3600; // 2 часа или 1 час
+    await this.set(key, results, ttl);
   }
 
   /**
    * Получение кэшированных результатов поиска
    */
-  async getCachedSearchResults(query: string, filters: any): Promise<any | null> {
-    const key = this.generateSearchKey(query, filters);
+  async getCachedSearchResults(query: string, filters: any, sort: string): Promise<any | null> {
+    const key = this.generateSearchKey(query, filters, sort);
     return await this.get(key);
+  }
+
+  /**
+   * Кэширование подсказок для автодополнения
+   */
+  async cacheSuggestions(query: string, suggestions: string[]): Promise<void> {
+    const key = `suggestions:${query.toLowerCase()}`;
+    await this.set(key, suggestions, 1800); // 30 минут
+  }
+
+  /**
+   * Получение кэшированных подсказок
+   */
+  async getCachedSuggestions(query: string): Promise<string[] | null> {
+    const key = `suggestions:${query.toLowerCase()}`;
+    return await this.get<string[]>(key);
   }
 
   /**
@@ -199,9 +217,10 @@ class CacheService {
   /**
    * Генерация ключа для поиска
    */
-  private generateSearchKey(query: string, filters: any): string {
+  private generateSearchKey(query: string, filters: any, sort?: string): string {
     const filtersStr = JSON.stringify(filters || {});
-    return `search:${query}:${filtersStr}`;
+    const sortStr = sort || 'smart';
+    return `search:${query}:${filtersStr}:${sortStr}`;
   }
 
   /**
