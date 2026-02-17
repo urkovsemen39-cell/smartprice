@@ -243,6 +243,20 @@ class WAFMiddleware {
   middleware() {
     return async (req: Request, res: Response, next: NextFunction) => {
       try {
+        // Whitelist для публичных endpoints
+        const whitelistedPaths = [
+          '/health',
+          '/api/health',
+          '/metrics',
+          '/api/metrics',
+          '/',
+          '/favicon.ico'
+        ];
+
+        if (whitelistedPaths.includes(req.path)) {
+          return next();
+        }
+
         const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
         // Проверка всех входных данных
