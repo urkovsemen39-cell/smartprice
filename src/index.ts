@@ -88,6 +88,20 @@ const suggestionsLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'SmartPrice API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      api: '/api/*',
+      metrics: '/metrics'
+    }
+  });
+});
+
 // Health check with dependencies
 app.get('/health', async (req, res) => {
   const health = {
