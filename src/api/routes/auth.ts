@@ -34,7 +34,11 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    const result = await authService.register(email, password, name);
+    // Получаем IP и User Agent
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await authService.register(email, password, name, ip, userAgent);
     res.json(result);
   } catch (error) {
     console.error('❌ Register error:', error);
@@ -59,8 +63,9 @@ router.post('/login', async (req: Request, res: Response) => {
     // Получаем IP и User Agent для логирования
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
+    const sessionId = (req as any).sessionID;
 
-    const result = await authService.login(email, password, ip, userAgent);
+    const result = await authService.login(email, password, ip, userAgent, sessionId);
     res.json(result);
   } catch (error) {
     console.error('❌ Login error:', error);

@@ -17,6 +17,10 @@ import suggestionsRoutes from './api/routes/suggestions';
 import priceHistoryRoutes from './api/routes/priceHistory';
 import compareRoutes from './api/routes/compare';
 import metricsRoutes from './api/routes/metrics';
+import emailVerificationRoutes from './api/routes/emailVerification';
+import sessionsRoutes from './api/routes/sessions';
+import apiKeysRoutes from './api/routes/apiKeys';
+import adminRoutes from './api/routes/admin';
 import priceCheckJob from './services/jobs/priceCheckJob';
 import priceHistoryJob from './services/jobs/priceHistoryJob';
 import { metricsMiddleware, errorMetricsMiddleware } from './middleware/metrics';
@@ -26,7 +30,16 @@ import {
   csrfProtectionMiddleware,
   securityHeadersMiddleware 
 } from './middleware/security';
+import { 
+  advancedRateLimitMiddleware,
+  cspMiddleware,
+  cspReportHandler 
+} from './middleware/advancedSecurity';
 import metricsService from './services/monitoring/metricsService';
+import { databaseMonitoringService } from './services/monitoring/databaseMonitoringService';
+import { sessionService } from './services/auth/sessionService';
+import { queueService } from './services/queue/queueService';
+import { advancedCacheService } from './services/cache/advancedCacheService';
 
 dotenv.config();
 
@@ -39,12 +52,15 @@ app.set('trust proxy', 1);
 // Security headers (должны быть первыми)
 app.use(securityHeadersMiddleware);
 
+// CSP middleware
+app.use(cspMiddleware);
+
 // CORS configuration with credentials
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -165,8 +181,12 @@ app.get('/health', async (req, res) => {
 });
 
 // API routes
-app.use('/api/search', searchRoutes);
+app.use('/api/search', advancedRateLimitMiddleware('search'), searchRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/email-verification', emailVerificationRoutes);
+app.use('/api/sessions', sessionsRoutes);
+app.use('/api/api-keys', apiKeysRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/price-tracking', priceTrackingRoutes);
 app.use('/api/analytics', analyticsRoutes);
@@ -174,6 +194,9 @@ app.use('/api/suggestions', suggestionsLimiter, suggestionsRoutes);
 app.use('/api/price-history', priceHistoryRoutes);
 app.use('/api/compare', compareRoutes);
 app.use('/metrics', metricsRoutes);
+
+// CSP violation report endpoint
+app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), cspReportHandler);
 
 // 404 handler
 app.use((req, res) => {
@@ -212,6 +235,15 @@ async function startServer() {
     // Инициализируем схему БД (если еще не создана)
     await initializeDatabase();
 
+    // Включаем pg_stat_statements для мониторинга
+    await databaseMonitoringService.enableStatements();
+
+    // Cache warming - предзагрузка популярных данных
+    await advancedCacheService.warmCache(async () => {
+      console.log('🔥 Cache warming started...');
+      // Здесь можно добавить предзагрузку популярных данных
+    });
+
     // Запускаем background jobs
     priceCheckJob.start(60); // Проверка цен каждый час
     priceHistoryJob.start(24); // Сбор истории раз в сутки
@@ -220,12 +252,25 @@ async function startServer() {
     setInterval(() => {
       metricsService.cleanup();
     }, 60 * 60 * 1000); // Каждый час
+
+    // Периодическая очистка истекших сессий
+    setInterval(async () => {
+      await sessionService.cleanupExpiredSessions();
+    }, 60 * 60 * 1000); // Каждый час
+
+    // Периодическая очистка очередей
+    setInterval(async () => {
+      await queueService.cleanQueues();
+    }, 24 * 60 * 60 * 1000); // Раз в сутки
     
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`📊 Health check: /health`);
       console.log(`📈 Metrics: /metrics`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔒 Advanced security enabled`);
+      console.log(`⚡ Advanced caching enabled (L1 + L2)`);
+      console.log(`📧 Queue service initialized`);
     });
     
     server.on('error', (error: any) => {
@@ -250,6 +295,13 @@ process.on('SIGTERM', async () => {
   priceHistoryJob.stop();
   
   try {
+    await queueService.close();
+    console.log('✅ Queue service closed');
+  } catch (err) {
+    console.error('❌ Error closing queue service:', err);
+  }
+  
+  try {
     await redisClient.quit();
     console.log('✅ Redis connection closed');
   } catch (err) {
@@ -264,6 +316,13 @@ process.on('SIGINT', async () => {
   
   priceCheckJob.stop();
   priceHistoryJob.stop();
+  
+  try {
+    await queueService.close();
+    console.log('✅ Queue service closed');
+  } catch (err) {
+    console.error('❌ Error closing queue service:', err);
+  }
   
   try {
     await redisClient.quit();

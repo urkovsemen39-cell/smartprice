@@ -1,8 +1,12 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import db from '../../config/database';
-import emailService from '../email/emailService';
-import redisClient from '../../config/redis';
+import { emailService } from '../email/emailService';
+import { redisClient } from '../../config/redis';
+import { emailVerificationService } from '../email/emailVerificationService';
+import { sessionService } from './sessionService';
+import { auditService } from '../audit/auditService';
+import { queueService } from '../queue/queueService';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -121,7 +125,7 @@ export class AuthService {
     }
   }
 
-  async register(email: string, password: string, name?: string): Promise<AuthTokens> {
+  async register(email: string, password: string, name?: string, ip?: string, userAgent?: string): Promise<AuthTokens> {
     try {
       // Валидация email
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -155,21 +159,41 @@ export class AuthService {
       // Хэшируем пароль
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-      // Создаем пользователя
+      // Создаем пользователя (email_verified = false по умолчанию)
       const result = await db.query(
-        'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
+        'INSERT INTO users (email, password_hash, name, email_verified) VALUES ($1, $2, $3, false) RETURNING id, email, name, created_at, email_verified',
         [email.toLowerCase().trim(), passwordHash, name?.trim()]
       );
 
       const user = result.rows[0];
 
-      // Отправляем welcome email (не блокируем регистрацию если не отправится)
-      emailService.sendWelcomeEmail(user.email, user.name).catch(err => {
-        console.error('❌ Failed to send welcome email:', err);
+      // Логирование регистрации
+      await auditService.log({
+        userId: user.id,
+        action: 'user.register',
+        ipAddress: ip,
+        userAgent,
+      });
+
+      // Отправка кода верификации через очередь
+      await queueService.addEmailJob({
+        type: 'verification',
+        to: user.email,
+        data: { code: '' }, // Код будет сгенерирован в emailVerificationService
+      });
+
+      // Отправка кода верификации
+      await emailVerificationService.sendVerificationCode(user.id, user.email);
+
+      // Отправляем welcome email через очередь
+      await queueService.addEmailJob({
+        type: 'welcome',
+        to: user.email,
+        data: { name: user.name },
       });
 
       // Генерируем токен
-      const accessToken = this.generateToken(user.id);
+      const accessToken = this.generateToken(user.id, user.email_verified);
 
       return {
         accessToken,
@@ -186,7 +210,7 @@ export class AuthService {
     }
   }
 
-  async login(email: string, password: string, ip?: string, userAgent?: string): Promise<AuthTokens> {
+  async login(email: string, password: string, ip?: string, userAgent?: string, sessionId?: string): Promise<AuthTokens> {
     try {
       // Проверяем блокировку аккаунта
       const lockout = await this.checkAccountLockout(email);
@@ -197,13 +221,22 @@ export class AuthService {
 
       // Находим пользователя
       const result = await db.query(
-        'SELECT id, email, name, password_hash, created_at FROM users WHERE email = $1',
+        'SELECT id, email, name, password_hash, created_at, email_verified FROM users WHERE email = $1',
         [email.toLowerCase().trim()]
       );
 
       if (result.rows.length === 0) {
         await this.recordFailedLogin(email);
         await this.logLoginAttempt(email, false, ip, userAgent);
+        
+        // Логирование в audit
+        await auditService.log({
+          action: 'user.login',
+          ipAddress: ip,
+          userAgent,
+          details: { success: false, email },
+        });
+        
         throw new Error('Invalid email or password');
       }
 
@@ -215,6 +248,15 @@ export class AuthService {
       if (!isValidPassword) {
         const attempts = await this.recordFailedLogin(email);
         await this.logLoginAttempt(email, false, ip, userAgent);
+        
+        // Логирование в audit
+        await auditService.log({
+          userId: user.id,
+          action: 'user.login',
+          ipAddress: ip,
+          userAgent,
+          details: { success: false },
+        });
         
         const remaining = MAX_LOGIN_ATTEMPTS - attempts;
         if (remaining > 0) {
@@ -228,8 +270,22 @@ export class AuthService {
       await this.resetLoginAttempts(email);
       await this.logLoginAttempt(email, true, ip, userAgent);
 
+      // Создание сессии
+      if (sessionId && ip && userAgent) {
+        await sessionService.createSession(user.id, sessionId, ip, userAgent, user.email);
+      }
+
+      // Логирование в audit
+      await auditService.log({
+        userId: user.id,
+        action: 'user.login',
+        ipAddress: ip,
+        userAgent,
+        details: { success: true },
+      });
+
       // Генерируем токен
-      const accessToken = this.generateToken(user.id);
+      const accessToken = this.generateToken(user.id, user.email_verified);
 
       return {
         accessToken,
@@ -274,9 +330,14 @@ export class AuthService {
     }
   }
 
-  private generateToken(userId: number): string {
-    return jwt.sign({ userId }, JWT_SECRET || 'fallback-secret-key', { expiresIn: JWT_EXPIRES_IN });
+  private generateToken(userId: number, emailVerified: boolean = false): string {
+    return jwt.sign(
+      { userId, emailVerified }, 
+      JWT_SECRET || 'fallback-secret-key', 
+      { expiresIn: JWT_EXPIRES_IN }
+    );
   }
 }
 
-export default new AuthService();
+export const authService = new AuthService();
+export default authService;

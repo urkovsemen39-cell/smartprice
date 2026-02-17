@@ -115,3 +115,102 @@ CREATE TABLE IF NOT EXISTS popular_queries (
 
 CREATE INDEX IF NOT EXISTS idx_popular_queries_count ON popular_queries(search_count DESC);
 CREATE INDEX IF NOT EXISTS idx_popular_queries_last_searched ON popular_queries(last_searched DESC);
+
+-- Email verification table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  code VARCHAR(6) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  verified BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verifications_user_id ON email_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at);
+
+-- User sessions table
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  session_id VARCHAR(255) UNIQUE NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  last_activity TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_active ON user_sessions(is_active, expires_at);
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS audit_log (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50),
+  resource_id VARCHAR(255),
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+
+-- CSP violations table
+CREATE TABLE IF NOT EXISTS csp_violations (
+  id SERIAL PRIMARY KEY,
+  document_uri TEXT,
+  violated_directive VARCHAR(100),
+  blocked_uri TEXT,
+  source_file TEXT,
+  line_number INTEGER,
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_csp_violations_created_at ON csp_violations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_csp_violations_directive ON csp_violations(violated_directive);
+
+-- API keys table
+CREATE TABLE IF NOT EXISTS api_keys (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  key_hash VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(100),
+  last_used_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active, expires_at);
+
+-- API key usage table
+CREATE TABLE IF NOT EXISTS api_key_usage (
+  id SERIAL PRIMARY KEY,
+  api_key_id INTEGER REFERENCES api_keys(id) ON DELETE CASCADE,
+  endpoint VARCHAR(255),
+  method VARCHAR(10),
+  status_code INTEGER,
+  response_time_ms INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_key_usage_key_id ON api_key_usage(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_api_key_usage_created_at ON api_key_usage(created_at DESC);
+
+-- Enable pg_stat_statements extension for query monitoring
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

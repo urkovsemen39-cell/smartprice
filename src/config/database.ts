@@ -75,4 +75,5 @@ process.on('SIGTERM', async () => {
   console.log('✅ Database pool closed');
 });
 
+export { pool };
 export default pool;

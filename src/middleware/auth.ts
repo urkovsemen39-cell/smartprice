@@ -55,3 +55,6 @@ export async function optionalAuthMiddleware(
     next();
   }
 }
+
+// Alias for compatibility
+export const authenticateToken = authMiddleware;
