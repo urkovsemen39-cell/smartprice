@@ -467,7 +467,7 @@ class AnomalyDetectionService {
    * Автоматическое обновление профилей (запускать периодически)
    */
   async updateAllProfiles(): Promise<void> {
-    const users = await pool.query('SELECT id FROM users WHERE active = true');
+    const users = await pool.query('SELECT id FROM users');
     
     for (const user of users.rows) {
       try {

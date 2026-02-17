@@ -6,6 +6,20 @@
 -- 2FA (Two-Factor Authentication)
 -- ============================================
 
+-- Ensure login_attempts table exists (from initSchema.ts)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  success BOOLEAN NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  attempted_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_success ON login_attempts(success, attempted_at DESC);
+
 CREATE TABLE IF NOT EXISTS user_2fa_settings (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -232,35 +246,7 @@ CREATE INDEX IF NOT EXISTS idx_users_locked ON users(account_locked);
 -- Performance Optimization Tables
 -- ============================================
 
--- Materialized view for popular products (will be refreshed periodically)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_popular_products AS
-SELECT 
-  product_id,
-  COUNT(*) as click_count,
-  COUNT(DISTINCT user_id) as unique_users,
-  MAX(created_at) as last_clicked
-FROM click_analytics
-WHERE created_at > NOW() - INTERVAL '7 days'
-GROUP BY product_id
-ORDER BY click_count DESC
-LIMIT 100;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_popular_product ON mv_popular_products(product_id);
-
--- Materialized view for search statistics
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_search_stats AS
-SELECT 
-  query,
-  COUNT(*) as search_count,
-  COUNT(DISTINCT user_id) as unique_users,
-  MAX(created_at) as last_searched
-FROM search_history
-WHERE created_at > NOW() - INTERVAL '7 days'
-GROUP BY query
-ORDER BY search_count DESC
-LIMIT 100;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_search_query ON mv_search_stats(query);
+-- Note: Materialized views for analytics will be created when analytics tables exist
 
 -- ============================================
 -- Partitioning for large tables (PostgreSQL 10+)
