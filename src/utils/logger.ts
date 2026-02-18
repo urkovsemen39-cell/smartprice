@@ -30,32 +30,46 @@ const consoleFormat = winston.format.combine(
 
 // Транспорты
 const transports: winston.transport[] = [
-  // Console transport
+  // Console transport (всегда используется)
   new winston.transports.Console({
     format: consoleFormat,
     level: isProduction ? 'info' : 'debug',
   }),
 ];
 
-// В production добавляем файловые транспорты
-if (isProduction) {
-  transports.push(
-    // Все логи
-    new winston.transports.File({
-      filename: path.join('logs', 'combined.log'),
-      format: logFormat,
-      maxsize: 10485760, // 10MB
-      maxFiles: 5,
-    }),
-    // Только ошибки
-    new winston.transports.File({
-      filename: path.join('logs', 'error.log'),
-      level: 'error',
-      format: logFormat,
-      maxsize: 10485760, // 10MB
-      maxFiles: 5,
-    })
-  );
+// В production добавляем файловые транспорты только если есть доступ к файловой системе
+// Railway и другие облачные платформы используют только консоль
+if (isProduction && process.env.ENABLE_FILE_LOGGING === 'true') {
+  try {
+    const fs = require('fs');
+    const logsDir = path.join(process.cwd(), 'logs');
+    
+    // Проверяем возможность создания директории
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    
+    transports.push(
+      // Все логи
+      new winston.transports.File({
+        filename: path.join(logsDir, 'combined.log'),
+        format: logFormat,
+        maxsize: 10485760, // 10MB
+        maxFiles: 5,
+      }),
+      // Только ошибки
+      new winston.transports.File({
+        filename: path.join(logsDir, 'error.log'),
+        level: 'error',
+        format: logFormat,
+        maxsize: 10485760, // 10MB
+        maxFiles: 5,
+      })
+    );
+  } catch (error) {
+    // Если не удалось создать файловые транспорты, используем только консоль
+    console.warn('File logging disabled: unable to create logs directory');
+  }
 }
 
 // Создание logger
@@ -66,21 +80,17 @@ const logger = winston.createLogger({
   exitOnError: false,
 });
 
-// Обработка необработанных исключений
+// Обработка необработанных исключений (только консоль в облаке)
 if (isProduction) {
   logger.exceptions.handle(
-    new winston.transports.File({
-      filename: path.join('logs', 'exceptions.log'),
-      maxsize: 10485760,
-      maxFiles: 5,
+    new winston.transports.Console({
+      format: consoleFormat,
     })
   );
 
   logger.rejections.handle(
-    new winston.transports.File({
-      filename: path.join('logs', 'rejections.log'),
-      maxsize: 10485760,
-      maxFiles: 5,
+    new winston.transports.Console({
+      format: consoleFormat,
     })
   );
 }
