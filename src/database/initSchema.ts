@@ -146,19 +146,26 @@ export async function initializeDatabase() {
     
     const tableExists = result.rows[0].exists;
     
-    if (tableExists) {
+    if (!tableExists) {
+      logger.info('📊 Initializing database schema...');
+      
+      // Выполняем SQL
+      await db.query(SCHEMA_SQL);
+      
+      logger.info('✅ Database schema initialized successfully');
+    } else {
       logger.info('✅ Database already initialized');
-      return;
     }
     
-    logger.info('📊 Initializing database schema...');
+    // Запускаем миграции
+    logger.info('🔄 Running database migrations...');
+    const { runMigrations } = require('./runMigration');
+    await runMigrations();
+    logger.info('✅ Migrations completed');
     
-    // Выполняем SQL
-    await db.query(SCHEMA_SQL);
-    
-    logger.info('✅ Database schema initialized successfully');
   } catch (error) {
     logger.error('❌ Failed to initialize database:', error);
-    throw error;
+    // Не бросаем ошибку, чтобы сервер мог запуститься
+    logger.warn('⚠️  Server will start without full database initialization');
   }
 }
