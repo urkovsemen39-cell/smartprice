@@ -312,10 +312,12 @@ async function startServer() {
     logger.info('='.repeat(60));
     logger.info('SmartPrice Backend - Production Ready Edition');
     logger.info('='.repeat(60));
+    logger.info(`Starting server on port ${PORT}`);
+    logger.info(`Node environment: ${env.NODE_ENV}`);
 
     // Start HTTP server first for healthcheck
-    const server = app.listen(PORT, () => {
-      logger.info(`Server listening on port ${PORT}`);
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`✓ Server listening on 0.0.0.0:${PORT}`);
       logger.info(`Environment: ${env.NODE_ENV}`);
     });
     
