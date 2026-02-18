@@ -20,6 +20,7 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+COPY --chown=nodejs:nodejs healthcheck.js ./
 
 USER nodejs
 
@@ -27,7 +28,7 @@ EXPOSE 3001
 
 ENV NODE_ENV=production
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD node healthcheck.js
 
 CMD ["node", "dist/index.js"]

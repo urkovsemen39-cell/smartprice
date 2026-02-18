@@ -29,15 +29,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 /**
  * Быстрая проверка (liveness probe)
  * GET /health/live
+ * Возвращает 200 если сервер запущен, независимо от состояния зависимостей
  */
 router.get('/live', asyncHandler(async (req: Request, res: Response) => {
-  const health = await healthCheckService.getQuickHealth();
-  
-  const statusCode = health.status === 'ok' 
-    ? HTTP_STATUS.OK 
-    : HTTP_STATUS.SERVICE_UNAVAILABLE;
-
-  res.status(statusCode).json(health);
+  // Простая проверка - сервер работает
+  res.status(HTTP_STATUS.OK).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
 }));
 
 /**

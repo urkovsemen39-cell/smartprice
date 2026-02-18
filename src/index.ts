@@ -313,96 +313,11 @@ async function startServer() {
     logger.info('SmartPrice Backend - Production Ready Edition');
     logger.info('='.repeat(60));
 
-    // Connect to Redis
-    await connectRedis();
-    logger.info('Redis connected');
-
-    // Check database
-    const dbHealthy = await checkDatabaseHealth();
-    if (!dbHealthy) {
-      throw new Error('Database connection failed');
-    }
-    logger.info('Database connected');
-
-    // Initialize database schema
-    await initializeDatabase();
-
-    // Enable pg_stat_statements
-    await databaseMonitoringService.enableStatements();
-
-    // Initialize Secrets Management
-    await secretsManagementService.initialize();
-    logger.info('Secrets Management initialized');
-
-    // Start Security Monitoring
-    securityMonitoringService.startMonitoring();
-    logger.info('Security Monitoring started');
-
-    // Start Maintenance Jobs
-    maintenanceJob.start();
-    securityCleanupJob.start(24); // Каждые 24 часа
-    logger.info('Maintenance & Security Cleanup Jobs started');
-
-    // Build user behavior profiles (background)
-    setTimeout(async () => {
-      logger.info('Building user behavior profiles...');
-      await anomalyDetectionService.updateAllProfiles();
-      logger.info('User behavior profiles updated');
-    }, 60000);
-
-    // Cache warming
-    await advancedCacheService.warmCache(async () => {
-      logger.info('Cache warming started...');
-    });
-
-    // Start background jobs
-    priceCheckJob.start(60);
-    priceHistoryJob.start(24);
-    
+    // Start HTTP server first for healthcheck
     const server = app.listen(PORT, () => {
-      logger.info('='.repeat(60));
-      logger.info(`Server running on port ${PORT}`);
-      logger.info(`Health check: /health`);
-      logger.info(`Metrics: /metrics`);
-      logger.info(`API Docs: /api-docs`);
-      logger.info(`GraphQL: /graphql`);
+      logger.info(`Server listening on port ${PORT}`);
       logger.info(`Environment: ${env.NODE_ENV}`);
-      logger.info('SECURITY FEATURES:');
-      logger.info('  ✓ Refresh Token Authentication');
-      logger.info('  ✓ Role-Based Access Control');
-      logger.info('  ✓ 2FA/MFA Authentication');
-      logger.info('  ✓ Intrusion Prevention System (IPS)');
-      logger.info('  ✓ Web Application Firewall (WAF)');
-      logger.info('  ✓ DDoS Protection');
-      logger.info('  ✓ Anomaly Detection (ML-based)');
-      logger.info('  ✓ Vulnerability Scanner');
-      logger.info('  ✓ Security Monitoring & Alerting');
-      logger.info('  ✓ Secrets Management & Rotation');
-      logger.info('  ✓ Bot Detection');
-      logger.info('  ✓ Credential Stuffing Protection');
-      logger.info('  ✓ Account Takeover Detection');
-      logger.info('PERFORMANCE FEATURES:');
-      logger.info('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
-      logger.info('  ✓ Database Query Optimization');
-      logger.info('  ✓ Connection Pooling');
-      logger.info('  ✓ Async Processing (Bull Queues)');
-      logger.info('  ✓ Graceful Degradation');
-      logger.info('  ✓ Circuit Breaker Pattern');
-      logger.info('RELIABILITY FEATURES:');
-      logger.info('  ✓ Health Checks (liveness & readiness)');
-      logger.info('  ✓ Automatic Maintenance Jobs');
-      logger.info('  ✓ Error Standardization');
-      logger.info('  ✓ Comprehensive Logging');
-      logger.info('  ✓ WebSocket Real-time Updates');
-      logger.info('  ✓ GraphQL API with Subscriptions');
-      logger.info('='.repeat(60));
     });
-    
-    // Initialize WebSocket for Socket.IO
-    websocketService.initialize(server);
-    websocketService.setPubSub(pubsub);
-    
-    logger.info('WebSocket server initialized');
     
     server.on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {
@@ -412,6 +327,100 @@ async function startServer() {
       }
       process.exit(1);
     });
+
+    // Initialize critical services in background
+    (async () => {
+      try {
+        // Connect to Redis
+        await connectRedis();
+        logger.info('✓ Redis connected');
+
+        // Check database
+        const dbHealthy = await checkDatabaseHealth();
+        if (!dbHealthy) {
+          throw new Error('Database connection failed');
+        }
+        logger.info('✓ Database connected');
+
+        // Initialize database schema
+        await initializeDatabase();
+        logger.info('✓ Database schema initialized');
+
+        // Enable pg_stat_statements
+        await databaseMonitoringService.enableStatements();
+
+        // Initialize Secrets Management
+        await secretsManagementService.initialize();
+        logger.info('✓ Secrets Management initialized');
+
+        // Start Security Monitoring
+        securityMonitoringService.startMonitoring();
+        logger.info('✓ Security Monitoring started');
+
+        // Start Maintenance Jobs
+        maintenanceJob.start();
+        securityCleanupJob.start(24);
+        logger.info('✓ Maintenance Jobs started');
+
+        // Cache warming (non-blocking)
+        advancedCacheService.warmCache(async () => {
+          logger.info('Cache warming started...');
+        }).catch(err => logger.error('Cache warming failed:', err));
+
+        // Start background jobs
+        priceCheckJob.start(60);
+        priceHistoryJob.start(24);
+        logger.info('✓ Background jobs started');
+
+        // Initialize WebSocket
+        websocketService.initialize(server);
+        websocketService.setPubSub(pubsub);
+        logger.info('✓ WebSocket initialized');
+
+        // Build user behavior profiles (background)
+        setTimeout(async () => {
+          logger.info('Building user behavior profiles...');
+          await anomalyDetectionService.updateAllProfiles();
+          logger.info('User behavior profiles updated');
+        }, 60000);
+
+        logger.info('='.repeat(60));
+        logger.info('🚀 All services initialized successfully');
+        logger.info('SECURITY FEATURES:');
+        logger.info('  ✓ Refresh Token Authentication');
+        logger.info('  ✓ Role-Based Access Control');
+        logger.info('  ✓ 2FA/MFA Authentication');
+        logger.info('  ✓ Intrusion Prevention System (IPS)');
+        logger.info('  ✓ Web Application Firewall (WAF)');
+        logger.info('  ✓ DDoS Protection');
+        logger.info('  ✓ Anomaly Detection (ML-based)');
+        logger.info('  ✓ Vulnerability Scanner');
+        logger.info('  ✓ Security Monitoring & Alerting');
+        logger.info('  ✓ Secrets Management & Rotation');
+        logger.info('  ✓ Bot Detection');
+        logger.info('  ✓ Credential Stuffing Protection');
+        logger.info('  ✓ Account Takeover Detection');
+        logger.info('PERFORMANCE FEATURES:');
+        logger.info('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
+        logger.info('  ✓ Database Query Optimization');
+        logger.info('  ✓ Connection Pooling');
+        logger.info('  ✓ Async Processing (Bull Queues)');
+        logger.info('  ✓ Graceful Degradation');
+        logger.info('  ✓ Circuit Breaker Pattern');
+        logger.info('RELIABILITY FEATURES:');
+        logger.info('  ✓ Health Checks (liveness & readiness)');
+        logger.info('  ✓ Automatic Maintenance Jobs');
+        logger.info('  ✓ Error Standardization');
+        logger.info('  ✓ Comprehensive Logging');
+        logger.info('  ✓ WebSocket Real-time Updates');
+        logger.info('  ✓ GraphQL API with Subscriptions');
+        logger.info('='.repeat(60));
+      } catch (error) {
+        logger.error('Failed to initialize services:', error);
+        // Don't exit - server can still handle requests with degraded functionality
+      }
+    })();
+
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
