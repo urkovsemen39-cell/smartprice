@@ -256,6 +256,21 @@ CREATE TABLE IF NOT EXISTS csp_violations (
 
 CREATE INDEX IF NOT EXISTS idx_csp_violations_created_at ON csp_violations(created_at);
 CREATE INDEX IF NOT EXISTS idx_csp_violations_directive ON csp_violations(violated_directive);
+
+-- Rate limit violations table
+CREATE TABLE IF NOT EXISTS rate_limit_violations (
+  id SERIAL PRIMARY KEY,
+  ip_address VARCHAR(45) NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  endpoint VARCHAR(255) NOT NULL,
+  limit_type VARCHAR(50) NOT NULL,
+  violations_count INTEGER DEFAULT 1,
+  first_violation TIMESTAMP DEFAULT NOW(),
+  last_violation TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_ip ON rate_limit_violations(ip_address);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_last ON rate_limit_violations(last_violation);
 `;
 
 export async function initializeDatabase() {
