@@ -223,6 +223,22 @@ CREATE TABLE IF NOT EXISTS backups (
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- WAF blocks table
+CREATE TABLE IF NOT EXISTS waf_blocks (
+  id SERIAL PRIMARY KEY,
+  ip_address VARCHAR(45) NOT NULL,
+  rule_id VARCHAR(100) NOT NULL,
+  rule_description TEXT,
+  request_method VARCHAR(10),
+  request_path TEXT,
+  request_headers JSONB,
+  request_body TEXT,
+  blocked_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_waf_ip ON waf_blocks(ip_address);
+CREATE INDEX IF NOT EXISTS idx_waf_blocked ON waf_blocks(blocked_at);
 `;
 
 export async function initializeDatabase() {
