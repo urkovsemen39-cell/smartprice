@@ -159,8 +159,8 @@ export async function initializeDatabase() {
     
     // Запускаем миграции
     logger.info('🔄 Running database migrations...');
-    const { runMigrations } = require('./runMigration');
-    await runMigrations();
+    const { runAllMigrations } = require('./runMigration');
+    await runAllMigrations();
     logger.info('✅ Migrations completed');
     
   } catch (error) {
