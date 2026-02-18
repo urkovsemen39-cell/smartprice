@@ -1,4 +1,5 @@
 import { pool } from '../../config/database';
+import logger from '../../utils/logger';
 
 interface QueryStats {
   query: string;
@@ -20,9 +21,9 @@ class DatabaseMonitoringService {
   async enableStatements(): Promise<void> {
     try {
       await pool.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
-      console.log('✅ pg_stat_statements enabled');
+      logger.info('pg_stat_statements enabled');
     } catch (error) {
-      console.error('❌ Error enabling pg_stat_statements:', error);
+      logger.error('Error enabling pg_stat_statements:', error);
     }
   }
 
@@ -51,7 +52,7 @@ class DatabaseMonitoringService {
         maxTime: parseFloat(row.max_time),
       }));
     } catch (error) {
-      console.error('❌ Error getting slow queries:', error);
+      logger.error('Error getting slow queries:', error);
       return [];
     }
   }
@@ -76,7 +77,7 @@ class DatabaseMonitoringService {
         indexSize: row.index_size,
       }));
     } catch (error) {
-      console.error('❌ Error getting table stats:', error);
+      logger.error('Error getting table stats:', error);
       return [];
     }
   }
@@ -97,7 +98,7 @@ class DatabaseMonitoringService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Error getting unused indexes:', error);
+      logger.error('Error getting unused indexes:', error);
       return [];
     }
   }
@@ -121,7 +122,7 @@ class DatabaseMonitoringService {
         }
       }
     } catch (error) {
-      console.error('❌ Error getting index recommendations:', error);
+      logger.error('Error getting index recommendations:', error);
     }
 
     return recommendations;
@@ -142,7 +143,7 @@ class DatabaseMonitoringService {
 
       return result.rows[0];
     } catch (error) {
-      console.error('❌ Error getting connection stats:', error);
+      logger.error('Error getting connection stats:', error);
       return null;
     }
   }
@@ -156,7 +157,7 @@ class DatabaseMonitoringService {
 
       return result.rows[0].size;
     } catch (error) {
-      console.error('❌ Error getting database size:', error);
+      logger.error('Error getting database size:', error);
       return 'Unknown';
     }
   }
@@ -178,7 +179,7 @@ class DatabaseMonitoringService {
 
       return result.rows.filter(row => parseFloat(row.dead_ratio) > 10);
     } catch (error) {
-      console.error('❌ Error checking vacuum needed:', error);
+      logger.error('Error checking vacuum needed:', error);
       return [];
     }
   }
@@ -186,11 +187,26 @@ class DatabaseMonitoringService {
   // Выполнение VACUUM на таблице
   async vacuumTable(tableName: string): Promise<boolean> {
     try {
+      // Whitelist допустимых таблиц для защиты от SQL injection
+      const allowedTables = [
+        'users', 'login_attempts', 'favorites', 'search_history',
+        'price_tracking', 'price_history', 'click_analytics', 'popular_queries',
+        'email_verifications', 'user_sessions', 'audit_log', 'csp_violations',
+        'api_keys', 'api_key_usage', 'user_2fa_settings', 'intrusion_attempts',
+        'ip_blacklist', 'vulnerability_scans', 'user_behavior_profiles',
+        'anomaly_detections', 'security_incidents', 'waf_blocks',
+        'secret_rotations', 'rate_limit_violations', 'geo_blocks', 'security_alerts'
+      ];
+      
+      if (!allowedTables.includes(tableName)) {
+        throw new Error(`Invalid table name: ${tableName}`);
+      }
+      
       await pool.query(`VACUUM ANALYZE ${tableName}`);
-      console.log(`✅ VACUUM completed for ${tableName}`);
+      logger.info(`VACUUM completed for ${tableName}`);
       return true;
     } catch (error) {
-      console.error(`❌ Error vacuuming ${tableName}:`, error);
+      logger.error(`Error vacuuming ${tableName}:`, error);
       return false;
     }
   }
@@ -230,7 +246,7 @@ class DatabaseMonitoringService {
   // Логирование медленного запроса
   async logSlowQuery(query: string, executionTime: number): Promise<void> {
     if (executionTime > 100) { // Медленнее 100ms
-      console.warn(`⚠️ Slow query detected (${executionTime.toFixed(2)}ms):`, query.substring(0, 200));
+      logger.warn(`Slow query detected (${executionTime.toFixed(2)}ms):`, { query: query.substring(0, 200) });
     }
   }
 }

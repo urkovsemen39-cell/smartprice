@@ -294,7 +294,7 @@ class IntrusionPreventionService {
     await redisClient.setEx(key, duration, JSON.stringify({ reason, blockedAt: Date.now() }));
 
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'ip_blocked',
       resourceType: 'security',
       details: { ip, reason, duration }
@@ -318,7 +318,7 @@ class IntrusionPreventionService {
     await redisClient.del(key);
 
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'ip_unblocked',
       resourceType: 'security',
       details: { ip }
@@ -364,7 +364,7 @@ class IntrusionPreventionService {
     }
 
     await auditService.log({
-      userId: attempt.userId || null,
+      userId: attempt.userId,
       action: 'intrusion_detected',
       resourceType: 'security',
       details: attempt

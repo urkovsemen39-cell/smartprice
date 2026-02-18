@@ -1,5 +1,6 @@
 import priceHistoryService from '../priceHistory/priceHistoryService';
 import db from '../../config/database';
+import logger from '../../utils/logger';
 
 export class PriceHistoryJob {
   private isRunning = false;
@@ -7,11 +8,11 @@ export class PriceHistoryJob {
 
   start(intervalHours: number = 24) {
     if (this.intervalId) {
-      console.log('⚠️ Price history job already running');
+      logger.warn('Price history job already running');
       return;
     }
 
-    console.log(`✅ Starting price history collection job (every ${intervalHours} hours)`);
+    logger.info(`Starting price history collection job (every ${intervalHours} hours)`);
     
     // Запускаем сразу
     this.collectPriceHistory();
@@ -26,18 +27,18 @@ export class PriceHistoryJob {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('✅ Price history job stopped');
+      logger.info('Price history job stopped');
     }
   }
 
   private async collectPriceHistory() {
     if (this.isRunning) {
-      console.log('⚠️ Price history collection already in progress, skipping...');
+      logger.warn('Price history collection already in progress, skipping...');
       return;
     }
 
     this.isRunning = true;
-    console.log('📊 Starting price history collection...');
+    logger.info('Starting price history collection...');
 
     try {
       // Получаем все уникальные товары из отслеживания цен
@@ -48,7 +49,7 @@ export class PriceHistoryJob {
       `);
 
       const products = result.rows;
-      console.log(`📦 Collecting history for ${products.length} products`);
+      logger.info(`Collecting history for ${products.length} products`);
 
       let collectedCount = 0;
 
@@ -75,19 +76,19 @@ export class PriceHistoryJob {
 
           collectedCount++;
         } catch (error) {
-          console.error(`❌ Error collecting history for ${product.product_id}:`, error);
+          logger.error(`Error collecting history for ${product.product_id}:`, error);
         }
       }
 
-      console.log(`✅ Price history collection completed. Collected: ${collectedCount}`);
+      logger.info(`Price history collection completed. Collected: ${collectedCount}`);
 
       // Очистка старых записей (старше 1 года)
       const deletedCount = await priceHistoryService.cleanOldHistory(365);
       if (deletedCount > 0) {
-        console.log(`🗑️ Cleaned ${deletedCount} old price history records`);
+        logger.info(`Cleaned ${deletedCount} old price history records`);
       }
     } catch (error) {
-      console.error('❌ Price history collection error:', error);
+      logger.error('Price history collection error:', error);
     } finally {
       this.isRunning = false;
     }

@@ -5,8 +5,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchProducts = searchProducts;
 const mockMarketplace_1 = require("../marketplaces/mockMarketplace");
-const cacheService_1 = __importDefault(require("../cache/cacheService"));
+const advancedCacheService_1 = require("../cache/advancedCacheService");
 const analyticsService_1 = __importDefault(require("../analytics/analyticsService"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 const marketplaces = [
     new mockMarketplace_1.MockMarketplaceAdapter('Яндекс.Маркет'),
     new mockMarketplace_1.MockMarketplaceAdapter('AliExpress'),
@@ -23,7 +24,7 @@ async function searchProducts(params, userId) {
     const { query, filters, sort = 'smart', page = 1, limit = 20 } = params;
     try {
         // Проверяем кэш
-        const cached = await cacheService_1.default.getCachedSearchResults(query, filters, sort);
+        const cached = await advancedCacheService_1.advancedCacheService.getCachedSearchResults(query, filters);
         if (cached) {
             await analyticsService_1.default.trackSearch(userId || null, query, filters, cached.total);
             return cached;
@@ -42,7 +43,7 @@ async function searchProducts(params, userId) {
                 allProducts = allProducts.concat(result.value);
             }
             else {
-                console.error(`❌ ${marketplaces[index].name} failed:`, result.reason.message);
+                logger_1.default.error(`${marketplaces[index].name} failed:`, result.reason.message);
             }
         });
         // Применяем фильтры
@@ -65,13 +66,13 @@ async function searchProducts(params, userId) {
         };
         // Кэшируем результаты с учетом популярности
         const popularity = await analyticsService_1.default.getQueryPopularityCount(query);
-        await cacheService_1.default.cacheSearchResults(query, filters, sort, response, popularity);
+        await advancedCacheService_1.advancedCacheService.cacheSearchResults(query, filters, response);
         // Трекаем поиск
         await analyticsService_1.default.trackSearch(userId || null, query, filters, total);
         return response;
     }
     catch (error) {
-        console.error('❌ Search service error:', error);
+        logger_1.default.error('Search service error:', error);
         throw error;
     }
 }

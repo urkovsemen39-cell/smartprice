@@ -5,6 +5,7 @@ import intrusionPreventionService from './intrusionPreventionService';
 import ddosProtectionService from './ddosProtectionService';
 import anomalyDetectionService from './anomalyDetectionService';
 import vulnerabilityScannerService from './vulnerabilityScannerService';
+import logger, { logSecurity } from '../../utils/logger';
 
 interface SecurityDashboard {
   overview: {
@@ -44,7 +45,7 @@ class SecurityMonitoringService {
       return; // Уже запущен
     }
 
-    console.log('🔒 Security Monitoring Service started');
+    logger.info('Security Monitoring Service started');
 
     this.monitoringInterval = setInterval(async () => {
       await this.performSecurityCheck();
@@ -61,7 +62,7 @@ class SecurityMonitoringService {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
-      console.log('🔒 Security Monitoring Service stopped');
+      logger.info('Security Monitoring Service stopped');
     }
   }
 
@@ -86,7 +87,7 @@ class SecurityMonitoringService {
       await ddosProtectionService.autoScale();
 
     } catch (error) {
-      console.error('Security check error:', error);
+      logger.error('Security check error:', error);
     }
   }
 
@@ -196,7 +197,7 @@ class SecurityMonitoringService {
     await this.sendAlertNotification(alert);
 
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'security_alert_created',
       resourceType: 'security',
       details: alert
@@ -207,10 +208,12 @@ class SecurityMonitoringService {
    * Отправка уведомления об алерте
    */
   private async sendAlertNotification(alert: SecurityAlert): Promise<void> {
-    // TODO: Интеграция с Slack, Telegram, Email, PagerDuty
-    console.log('🚨 SECURITY ALERT:', alert.title);
-    console.log('   Severity:', alert.severity);
-    console.log('   Description:', alert.description);
+    // Логирование алерта
+    logSecurity(`SECURITY ALERT: ${alert.title}`, {
+      severity: alert.severity,
+      description: alert.description,
+      details: alert.details
+    });
   }
 
   /**
@@ -346,7 +349,7 @@ class SecurityMonitoringService {
     const incidentId = result.rows[0].id;
 
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'security_incident_created',
       resourceType: 'security',
       details: { incidentId, type, severity }
@@ -371,7 +374,7 @@ class SecurityMonitoringService {
     );
 
     await auditService.log({
-      userId: userId || null,
+      userId: userId,
       action: 'security_incident_updated',
       resourceType: 'security',
       details: { incidentId, status }

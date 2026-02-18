@@ -1,25 +1,23 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import db from '../../config/database';
-import { emailService } from '../email/emailService';
 import { redisClient } from '../../config/redis';
 import { emailVerificationService } from '../email/emailVerificationService';
 import { sessionService } from './sessionService';
+import { refreshTokenService } from './refreshTokenService';
 import { auditService } from '../audit/auditService';
 import { queueService } from '../queue/queueService';
+import { AUTH, VALIDATION } from '../../config/constants';
+import { ValidationError, AuthenticationError } from '../../utils/errors';
+import env from '../../config/env';
+import logger from '../../utils/logger';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production environment');
-  }
-  console.warn('⚠️ JWT_SECRET not set, using default (NOT FOR PRODUCTION)');
+// SECURITY: No fallback for JWT_SECRET - must be set in production
+if (!env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in environment variables');
 }
 
-const JWT_EXPIRES_IN = '7d';
-const SALT_ROUNDS = 12;
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60; // 15 минут в секундах
+const JWT_SECRET = env.JWT_SECRET;
 
 export interface User {
   id: number;
@@ -30,17 +28,18 @@ export interface User {
 
 export interface AuthTokens {
   accessToken: string;
+  refreshToken: string;
   user: User;
 }
 
 export class AuthService {
   // Проверка сложности пароля
   private validatePasswordStrength(password: string): { valid: boolean; message?: string } {
-    if (password.length < 8) {
-      return { valid: false, message: 'Password must be at least 8 characters' };
+    if (password.length < AUTH.PASSWORD_MIN_LENGTH) {
+      return { valid: false, message: `Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters` };
     }
-    if (password.length > 100) {
-      return { valid: false, message: 'Password is too long (max 100 characters)' };
+    if (password.length > AUTH.PASSWORD_MAX_LENGTH) {
+      return { valid: false, message: `Password is too long (max ${AUTH.PASSWORD_MAX_LENGTH} characters)` };
     }
 
     const hasUpperCase = /[A-Z]/.test(password);
@@ -57,19 +56,16 @@ export class AuthService {
       };
     }
 
-    // Проверка на только цифры
     if (/^\d+$/.test(password)) {
       return { valid: false, message: 'Password cannot contain only numbers' };
     }
 
-    // Проверка на только буквы
     if (/^[a-zA-Z]+$/.test(password)) {
       return { valid: false, message: 'Password must contain numbers or special characters' };
     }
 
-    // Проверка на распространенные пароли
-    const commonPasswords = ['password', '12345678', '123456789', 'qwerty', 'abc123', 'password123', 'qwerty123'];
-    if (commonPasswords.includes(password.toLowerCase())) {
+    const commonPasswords = VALIDATION.COMMON_PASSWORDS as readonly string[];
+    if (commonPasswords.some(p => p === password.toLowerCase())) {
       return { valid: false, message: 'Password is too common, please choose a stronger one' };
     }
 
@@ -81,7 +77,7 @@ export class AuthService {
     const key = `login_attempts:${email.toLowerCase()}`;
     const attempts = await redisClient.get(key);
     
-    if (attempts && parseInt(attempts) >= MAX_LOGIN_ATTEMPTS) {
+    if (attempts && parseInt(attempts) >= AUTH.MAX_LOGIN_ATTEMPTS) {
       const ttl = await redisClient.ttl(key);
       return { locked: true, remainingTime: ttl };
     }
@@ -95,7 +91,7 @@ export class AuthService {
     const attempts = await redisClient.incr(key);
     
     if (attempts === 1) {
-      await redisClient.expire(key, LOCKOUT_DURATION);
+      await redisClient.expire(key, AUTH.LOCKOUT_DURATION);
     }
     
     return attempts;
@@ -121,29 +117,28 @@ export class AuthService {
         [email.toLowerCase(), success, ip || null, userAgent || null]
       );
     } catch (error) {
-      console.error('❌ Failed to log login attempt:', error);
+      logger.error('Failed to log login attempt:', error);
     }
   }
 
   async register(email: string, password: string, name?: string, ip?: string, userAgent?: string): Promise<AuthTokens> {
     try {
       // Валидация email
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(email)) {
-        throw new Error('Invalid email format');
+      if (!VALIDATION.EMAIL_REGEX.test(email)) {
+        throw new ValidationError('Invalid email format');
       }
 
       // Проверка на одноразовые email
-      const disposableEmailDomains = ['tempmail.com', 'throwaway.email', '10minutemail.com', 'guerrillamail.com'];
       const emailDomain = email.split('@')[1]?.toLowerCase();
-      if (disposableEmailDomains.includes(emailDomain)) {
-        throw new Error('Disposable email addresses are not allowed');
+      const disposableDomains = VALIDATION.DISPOSABLE_EMAIL_DOMAINS as readonly string[];
+      if (emailDomain && disposableDomains.some(d => d === emailDomain)) {
+        throw new ValidationError('Disposable email addresses are not allowed');
       }
 
       // Валидация пароля
       const passwordValidation = this.validatePasswordStrength(password);
       if (!passwordValidation.valid) {
-        throw new Error(passwordValidation.message);
+        throw new ValidationError(passwordValidation.message!);
       }
 
       // Проверяем существование пользователя
@@ -153,16 +148,16 @@ export class AuthService {
       );
 
       if (existingUser.rows.length > 0) {
-        throw new Error('User with this email already exists');
+        throw new ValidationError('User with this email already exists');
       }
 
       // Хэшируем пароль
-      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+      const passwordHash = await bcrypt.hash(password, AUTH.SALT_ROUNDS);
 
-      // Создаем пользователя (email_verified = false по умолчанию)
+      // Создаем пользователя
       const result = await db.query(
-        'INSERT INTO users (email, password_hash, name, email_verified) VALUES ($1, $2, $3, false) RETURNING id, email, name, created_at, email_verified',
-        [email.toLowerCase().trim(), passwordHash, name?.trim()]
+        'INSERT INTO users (email, password_hash, name, email_verified, role) VALUES ($1, $2, $3, false, $4) RETURNING id, email, name, created_at, email_verified, role',
+        [email.toLowerCase().trim(), passwordHash, name?.trim(), 'user']
       );
 
       const user = result.rows[0];
@@ -179,10 +174,9 @@ export class AuthService {
       await queueService.addEmailJob({
         type: 'verification',
         to: user.email,
-        data: { code: '' }, // Код будет сгенерирован в emailVerificationService
+        data: { code: '' },
       });
 
-      // Отправка кода верификации
       await emailVerificationService.sendVerificationCode(user.id, user.email);
 
       // Отправляем welcome email через очередь
@@ -192,11 +186,13 @@ export class AuthService {
         data: { name: user.name },
       });
 
-      // Генерируем токен
-      const accessToken = this.generateToken(user.id, user.email_verified);
+      // Генерируем токены
+      const accessToken = this.generateAccessToken(user.id, user.email_verified, user.role);
+      const refreshToken = await refreshTokenService.generateRefreshToken(user.id, ip, userAgent);
 
       return {
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -205,7 +201,7 @@ export class AuthService {
         },
       };
     } catch (error) {
-      console.error('❌ Registration error:', error);
+      logger.error('Registration error:', error);
       throw error;
     }
   }
@@ -216,12 +212,12 @@ export class AuthService {
       const lockout = await this.checkAccountLockout(email);
       if (lockout.locked) {
         const minutes = Math.ceil((lockout.remainingTime || 0) / 60);
-        throw new Error(`Account temporarily locked. Try again in ${minutes} minutes`);
+        throw new AuthenticationError(`Account temporarily locked. Try again in ${minutes} minutes`);
       }
 
       // Находим пользователя
       const result = await db.query(
-        'SELECT id, email, name, password_hash, created_at, email_verified FROM users WHERE email = $1',
+        'SELECT id, email, name, password_hash, created_at, email_verified, role FROM users WHERE email = $1',
         [email.toLowerCase().trim()]
       );
 
@@ -229,7 +225,6 @@ export class AuthService {
         await this.recordFailedLogin(email);
         await this.logLoginAttempt(email, false, ip, userAgent);
         
-        // Логирование в audit
         await auditService.log({
           action: 'user.login',
           ipAddress: ip,
@@ -237,19 +232,18 @@ export class AuthService {
           details: { success: false, email },
         });
         
-        throw new Error('Invalid email or password');
+        throw new AuthenticationError('Invalid email or password');
       }
 
       const user = result.rows[0];
 
-      // Проверяем пароль
+      // Проверяем пароль (constant-time comparison через bcrypt)
       const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
       if (!isValidPassword) {
         const attempts = await this.recordFailedLogin(email);
         await this.logLoginAttempt(email, false, ip, userAgent);
         
-        // Логирование в audit
         await auditService.log({
           userId: user.id,
           action: 'user.login',
@@ -258,11 +252,11 @@ export class AuthService {
           details: { success: false },
         });
         
-        const remaining = MAX_LOGIN_ATTEMPTS - attempts;
+        const remaining = AUTH.MAX_LOGIN_ATTEMPTS - attempts;
         if (remaining > 0) {
-          throw new Error(`Invalid email or password. ${remaining} attempts remaining`);
+          throw new AuthenticationError(`Invalid email or password. ${remaining} attempts remaining`);
         } else {
-          throw new Error('Account temporarily locked due to too many failed attempts');
+          throw new AuthenticationError('Account temporarily locked due to too many failed attempts');
         }
       }
 
@@ -284,11 +278,13 @@ export class AuthService {
         details: { success: true },
       });
 
-      // Генерируем токен
-      const accessToken = this.generateToken(user.id, user.email_verified);
+      // Генерируем токены
+      const accessToken = this.generateAccessToken(user.id, user.email_verified, user.role);
+      const refreshToken = await refreshTokenService.generateRefreshToken(user.id, ip, userAgent);
 
       return {
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -297,9 +293,88 @@ export class AuthService {
         },
       };
     } catch (error) {
-      console.error('❌ Login error:', error);
+      logger.error('Login error:', error);
       throw error;
     }
+  }
+
+  async refreshAccessToken(refreshToken: string, ip?: string, userAgent?: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // Валидация refresh token
+    const validation = await refreshTokenService.validateRefreshToken(refreshToken);
+    
+    if (!validation.valid || !validation.userId) {
+      throw new AuthenticationError('Invalid or expired refresh token');
+    }
+
+    // Проверка подозрительной активности
+    const suspicious = await refreshTokenService.checkSuspiciousActivity(validation.userId, ip || 'unknown');
+    if (suspicious) {
+      await auditService.log({
+        userId: validation.userId,
+        action: 'anomaly_detected',
+        ipAddress: ip,
+        userAgent,
+        details: { type: 'refresh_token_suspicious_activity' },
+      });
+    }
+
+    // Получаем пользователя
+    const user = await this.getUserById(validation.userId);
+    if (!user) {
+      throw new AuthenticationError('User not found');
+    }
+
+    // Получаем роль пользователя
+    const userResult = await db.query(
+      'SELECT role, email_verified FROM users WHERE id = $1',
+      [validation.userId]
+    );
+
+    const { role, email_verified } = userResult.rows[0];
+
+    // Отзываем старый refresh token
+    await refreshTokenService.revokeRefreshToken(refreshToken, validation.userId);
+
+    // Генерируем новые токены
+    const newAccessToken = this.generateAccessToken(validation.userId, email_verified, role);
+    const newRefreshToken = await refreshTokenService.generateRefreshToken(validation.userId, ip, userAgent);
+
+    await auditService.log({
+      userId: validation.userId,
+      action: 'user.login',
+      ipAddress: ip,
+      userAgent,
+      details: { type: 'token_refresh' },
+    });
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
+
+  async logout(refreshToken: string, userId: number): Promise<void> {
+    await refreshTokenService.revokeRefreshToken(refreshToken, userId);
+    
+    await auditService.log({
+      userId,
+      action: 'user.logout',
+    });
+  }
+
+  async logoutAll(userId: number): Promise<void> {
+    await refreshTokenService.revokeAllUserTokens(userId);
+    // Завершаем все сессии через terminateAllOtherSessions с пустым sessionId
+    const sessions = await sessionService.getUserSessions(userId);
+    for (const session of sessions) {
+      await sessionService.terminateSession(userId, session.sessionId);
+    }
+    
+    await auditService.log({
+      userId,
+      action: 'user.logout',
+      details: { type: 'logout_all_sessions' },
+    });
   }
 
   async getUserById(userId: number): Promise<User | null> {
@@ -315,26 +390,93 @@ export class AuthService {
 
       return result.rows[0];
     } catch (error) {
-      console.error('❌ Get user error:', error);
+      logger.error('Get user error:', error);
       return null;
     }
   }
 
-  verifyToken(token: string): { userId: number } | null {
+  /**
+   * Смена пароля с отзывом всех токенов
+   */
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    ip?: string,
+    userAgent?: string
+  ): Promise<void> {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET || 'fallback-secret-key') as { userId: number };
+      // Получаем текущий пароль пользователя
+      const result = await db.query(
+        'SELECT password_hash, email FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new AuthenticationError('User not found');
+      }
+
+      const user = result.rows[0];
+
+      // Проверяем текущий пароль
+      const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!isValidPassword) {
+        throw new AuthenticationError('Current password is incorrect');
+      }
+
+      // Валидация нового пароля
+      const passwordValidation = this.validatePasswordStrength(newPassword);
+      if (!passwordValidation.valid) {
+        throw new ValidationError(passwordValidation.message!);
+      }
+
+      // Проверяем, что новый пароль отличается от старого
+      const isSamePassword = await bcrypt.compare(newPassword, user.password_hash);
+      if (isSamePassword) {
+        throw new ValidationError('New password must be different from current password');
+      }
+
+      // Хэшируем новый пароль
+      const newPasswordHash = await bcrypt.hash(newPassword, AUTH.SALT_ROUNDS);
+
+      // Обновляем пароль
+      await db.query(
+        'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
+        [newPasswordHash, userId]
+      );
+
+      // КРИТИЧЕСКИ ВАЖНО: Отзываем все токены и сессии
+      await this.logoutAll(userId);
+
+      // Логирование
+      await auditService.log({
+        userId,
+        action: 'user.password_change',
+        ipAddress: ip,
+        userAgent,
+      });
+
+      logger.info(`Password changed for user ${userId}, all tokens revoked`);
+    } catch (error) {
+      logger.error('Change password error:', error);
+      throw error;
+    }
+  }
+
+  verifyToken(token: string): { userId: number; emailVerified: boolean; role: string } | null {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; emailVerified: boolean; role: string };
       return decoded;
     } catch (error) {
-      console.error('❌ Token verification error:', error);
       return null;
     }
   }
 
-  private generateToken(userId: number, emailVerified: boolean = false): string {
+  private generateAccessToken(userId: number, emailVerified: boolean = false, role: string = 'user'): string {
     return jwt.sign(
-      { userId, emailVerified }, 
-      JWT_SECRET || 'fallback-secret-key', 
-      { expiresIn: JWT_EXPIRES_IN }
+      { userId, emailVerified, role }, 
+      JWT_SECRET, 
+      { expiresIn: AUTH.JWT_EXPIRES_IN }
     );
   }
 }

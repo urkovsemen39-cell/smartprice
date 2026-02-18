@@ -14,6 +14,9 @@ export type AuditAction =
   | 'price_tracking.delete'
   | 'session.create'
   | 'session.terminate'
+  | 'refresh_token.created'
+  | 'refresh_token.revoked'
+  | 'refresh_token.revoked_all'
   // Ultimate Security Actions
   | 'credential_stuffing_detected'
   | 'account_takeover_suspected'
@@ -37,7 +40,7 @@ export type AuditAction =
   | 'vulnerability_scan';
 
 interface AuditLogEntry {
-  userId?: number;
+  userId?: number | null;
   action: AuditAction;
   resourceType?: string;
   resourceId?: string;
@@ -65,28 +68,47 @@ class AuditService {
         ]
       );
 
-      console.log(`📝 Audit log: ${entry.action} by user ${entry.userId || 'anonymous'}`);
+      const logger = require('../../utils/logger').default;
+      logger.info(`Audit log: ${entry.action} by user ${entry.userId || 'anonymous'}`);
     } catch (error) {
-      console.error('❌ Error logging audit entry:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error logging audit entry:', error);
       // Не бросаем ошибку, чтобы не прерывать основной процесс
     }
   }
 
-  // Получение логов пользователя
-  async getUserLogs(userId: number, limit: number = 50): Promise<any[]> {
+  // Получение логов пользователя (с пагинацией)
+  async getUserLogs(userId: number, limit: number = 50, offset: number = 0): Promise<any[]> {
     try {
       const result = await pool.query(
         `SELECT * FROM audit_log 
          WHERE user_id = $1 
          ORDER BY created_at DESC 
-         LIMIT $2`,
-        [userId, limit]
+         LIMIT $2 OFFSET $3`,
+        [userId, limit, offset]
       );
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Error getting user logs:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting user logs:', error);
       return [];
+    }
+  }
+
+  // Получение количества логов пользователя
+  async getUserLogsCount(userId: number): Promise<number> {
+    try {
+      const result = await pool.query(
+        `SELECT COUNT(*) as count FROM audit_log WHERE user_id = $1`,
+        [userId]
+      );
+
+      return parseInt(result.rows[0].count);
+    } catch (error) {
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting user logs count:', error);
+      return 0;
     }
   }
 
@@ -103,7 +125,8 @@ class AuditService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Error getting logs by action:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting logs by action:', error);
       return [];
     }
   }
@@ -129,7 +152,8 @@ class AuditService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Error getting suspicious activity:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting suspicious activity:', error);
       return [];
     }
   }
@@ -165,7 +189,8 @@ class AuditService {
         period: `${days} days`,
       };
     } catch (error) {
-      console.error('❌ Error getting security stats:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting security stats:', error);
       return null;
     }
   }
@@ -182,7 +207,8 @@ class AuditService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Error exporting logs:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error exporting logs:', error);
       return [];
     }
   }

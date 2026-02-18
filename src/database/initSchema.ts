@@ -7,11 +7,20 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
+  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator')),
+  email_verified BOOLEAN DEFAULT FALSE,
+  email_verified_at TIMESTAMP,
+  account_locked BOOLEAN DEFAULT false,
+  locked_at TIMESTAMP,
+  lock_reason TEXT,
+  password_changed_at TIMESTAMP DEFAULT NOW(),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_locked ON users(account_locked);
 
 -- Login attempts table (для безопасности и аудита)
 CREATE TABLE IF NOT EXISTS login_attempts (
@@ -121,8 +130,10 @@ CREATE INDEX IF NOT EXISTS idx_popular_queries_last_searched ON popular_queries(
 `;
 
 export async function initializeDatabase() {
+  const logger = require('../utils/logger').default;
+  
   try {
-    console.log('🔍 Checking if database is initialized...');
+    logger.info('🔍 Checking if database is initialized...');
     
     // Проверяем, существует ли таблица users
     const result = await db.query(`
@@ -136,18 +147,18 @@ export async function initializeDatabase() {
     const tableExists = result.rows[0].exists;
     
     if (tableExists) {
-      console.log('✅ Database already initialized');
+      logger.info('✅ Database already initialized');
       return;
     }
     
-    console.log('📊 Initializing database schema...');
+    logger.info('📊 Initializing database schema...');
     
     // Выполняем SQL
     await db.query(SCHEMA_SQL);
     
-    console.log('✅ Database schema initialized successfully');
+    logger.info('✅ Database schema initialized successfully');
   } catch (error) {
-    console.error('❌ Failed to initialize database:', error);
+    logger.error('❌ Failed to initialize database:', error);
     throw error;
   }
 }

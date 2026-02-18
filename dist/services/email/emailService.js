@@ -1,18 +1,22 @@
 "use strict";
 // Email сервис для отправки уведомлений
 // Поддерживает SendGrid, AWS SES, и Nodemailer
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.emailService = exports.EmailService = void 0;
+const logger_1 = __importDefault(require("../../utils/logger"));
 class EmailService {
     constructor() {
         this.provider = process.env.EMAIL_PROVIDER || 'none';
         this.fromEmail = process.env.EMAIL_FROM || 'noreply@smartprice.ru';
         this.fromName = process.env.EMAIL_FROM_NAME || 'SmartPrice';
         if (this.provider !== 'none') {
-            console.log(`✅ Email service initialized with provider: ${this.provider}`);
+            logger_1.default.info(`Email service initialized with provider: ${this.provider}`);
         }
         else {
-            console.log('📧 Email service in development mode (logging only)');
+            logger_1.default.info('Email service in development mode (logging only)');
         }
     }
     async sendPriceAlert(email, productName, targetPrice, currentPrice, productUrl) {
@@ -97,7 +101,7 @@ class EmailService {
     async send(options) {
         // Development mode - только логирование
         if (this.provider === 'none') {
-            console.log('📧 Email (dev mode):', {
+            logger_1.default.info('Email (dev mode):', {
                 from: `${this.fromName} <${this.fromEmail}>`,
                 to: options.to,
                 subject: options.subject,
@@ -114,12 +118,12 @@ class EmailService {
                 case 'nodemailer':
                     return await this.sendWithNodemailer(options);
                 default:
-                    console.warn('⚠️ Unknown email provider:', this.provider);
+                    logger_1.default.warn('Unknown email provider:', this.provider);
                     return false;
             }
         }
         catch (error) {
-            console.error('❌ Email send error:', error);
+            logger_1.default.error('Email send error:', error);
             return false;
         }
     }
@@ -138,11 +142,11 @@ class EmailService {
                 html: options.html,
                 text: options.text,
             });
-            console.log('✅ Email sent via SendGrid:', options.to);
+            logger_1.default.info('Email sent via SendGrid:', options.to);
             return true;
         }
         catch (error) {
-            console.error('❌ SendGrid error:', error);
+            logger_1.default.error('SendGrid error:', error);
             return false;
         }
     }
@@ -178,11 +182,11 @@ class EmailService {
                 },
             };
             await ses.sendEmail(params).promise();
-            console.log('✅ Email sent via AWS SES:', options.to);
+            logger_1.default.info('Email sent via AWS SES:', options.to);
             return true;
         }
         catch (error) {
-            console.error('❌ AWS SES error:', error);
+            logger_1.default.error('AWS SES error:', error);
             return false;
         }
     }
@@ -206,11 +210,11 @@ class EmailService {
                 html: options.html,
                 text: options.text,
             });
-            console.log('✅ Email sent via Nodemailer:', options.to);
+            logger_1.default.info('Email sent via Nodemailer:', options.to);
             return true;
         }
         catch (error) {
-            console.error('❌ Nodemailer error:', error);
+            logger_1.default.error('Nodemailer error:', error);
             return false;
         }
     }

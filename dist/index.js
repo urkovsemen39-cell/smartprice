@@ -1,51 +1,26 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_session_1 = __importDefault(require("express-session"));
 const connect_redis_1 = __importDefault(require("connect-redis"));
+const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
 const redis_1 = require("./config/redis");
 const redis_2 = __importDefault(require("./config/redis"));
+const database_1 = require("./config/database");
 const initSchema_1 = require("./database/initSchema");
+const swagger_1 = require("./config/swagger");
+const env_1 = __importDefault(require("./config/env"));
+const constants_1 = require("./config/constants");
+const errors_1 = require("./utils/errors");
+const logger_1 = __importDefault(require("./utils/logger"));
+// Routes
+const health_1 = __importDefault(require("./api/routes/health"));
 const search_1 = __importDefault(require("./api/routes/search"));
 const auth_1 = __importDefault(require("./api/routes/auth"));
 const favorites_1 = __importDefault(require("./api/routes/favorites"));
@@ -60,358 +35,402 @@ const sessions_1 = __importDefault(require("./api/routes/sessions"));
 const apiKeys_1 = __importDefault(require("./api/routes/apiKeys"));
 const admin_1 = __importDefault(require("./api/routes/admin"));
 const security_1 = __importDefault(require("./api/routes/security"));
+const owner_1 = __importDefault(require("./api/routes/owner"));
+// Jobs
 const priceCheckJob_1 = __importDefault(require("./services/jobs/priceCheckJob"));
 const priceHistoryJob_1 = __importDefault(require("./services/jobs/priceHistoryJob"));
+const maintenanceJob_1 = __importDefault(require("./services/jobs/maintenanceJob"));
+const securityCleanupJob_1 = __importDefault(require("./services/jobs/securityCleanupJob"));
+// Middleware
 const metrics_2 = require("./middleware/metrics");
-const security_2 = require("./middleware/security");
-const advancedSecurity_1 = require("./middleware/advancedSecurity");
+const securityMiddleware_1 = __importDefault(require("./middleware/securityMiddleware"));
 const waf_1 = __importDefault(require("./middleware/waf"));
 const ddosProtection_1 = require("./middleware/ddosProtection");
-const enhancedSecurity_1 = require("./middleware/enhancedSecurity");
-const metricsService_1 = __importDefault(require("./services/monitoring/metricsService"));
+const requestId_1 = require("./middleware/requestId");
+const caching_1 = require("./middleware/caching");
+const express_2 = require("graphql-http/lib/use/express");
+const schema_1 = require("./graphql/schema");
+const resolvers_1 = require("./graphql/resolvers");
+const ws_1 = require("ws");
+// @ts-ignore - graphql-ws types issue
+const { useServer: useGraphQLWsServer } = require('graphql-ws/lib/use/ws');
+// Services
 const databaseMonitoringService_1 = require("./services/monitoring/databaseMonitoringService");
-const sessionService_1 = require("./services/auth/sessionService");
-const queueService_1 = require("./services/queue/queueService");
 const advancedCacheService_1 = require("./services/cache/advancedCacheService");
 const securityMonitoringService_1 = __importDefault(require("./services/security/securityMonitoringService"));
 const secretsManagementService_1 = __importDefault(require("./services/security/secretsManagementService"));
 const anomalyDetectionService_1 = __importDefault(require("./services/security/anomalyDetectionService"));
-dotenv_1.default.config();
+const websocketService_1 = __importDefault(require("./services/websocket/websocketService"));
 const app = (0, express_1.default)();
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = env_1.default.PORT;
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 // ============================================
-// ULTIMATE SECURITY MIDDLEWARE STACK
+// SECURITY MIDDLEWARE STACK
 // ============================================
-// 1. Security headers (должны быть первыми)
-app.use(security_2.securityHeadersMiddleware);
-// 2. CSP middleware
-app.use(advancedSecurity_1.cspMiddleware);
-// 3. CORS configuration with credentials
+app.use(securityMiddleware_1.default.securityHeaders);
+app.use(securityMiddleware_1.default.csp);
+// HTTPS enforcement in production
+if (env_1.default.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+        if (req.headers['x-forwarded-proto'] !== 'https') {
+            return res.redirect(301, `https://${req.headers.host}${req.url}`);
+        }
+        next();
+    });
+}
+// CORS configuration
 const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'https://smartprice-frontend-production.up.railway.app'
+    env_1.default.FRONTEND_URL,
+    ...(env_1.default.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : [])
 ].filter(Boolean);
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
-        // Разрешаем запросы без origin (например, Postman, curl)
         if (!origin)
             return callback(null, true);
         if (allowedOrigins.includes(origin)) {
             callback(null, true);
         }
         else {
-            callback(null, true); // Временно разрешаем все origins для отладки
+            logger_1.default.warn(`CORS blocked origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response'],
+    maxAge: 86400,
 }));
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use((0, cookie_parser_1.default)());
-// 4. DDoS Protection (критично для защиты от атак)
+// Request ID tracking
+app.use(requestId_1.requestIdMiddleware);
+// HTTP Caching
+app.use(caching_1.cachingMiddleware);
+// DDoS Protection
 app.use(ddosProtection_1.ddosProtection);
-// 5. Geo-blocking (опционально)
-if (process.env.ENABLE_GEO_BLOCKING === 'true') {
+if (env_1.default.ENABLE_GEO_BLOCKING) {
     app.use(ddosProtection_1.geoBlocking);
 }
-// 6. WAF - Web Application Firewall
+// WAF
 app.use(waf_1.default.middleware());
-// 7. Input Validation & Sanitization
-app.use(enhancedSecurity_1.inputValidation);
-// 8. Bot Detection
-app.use(enhancedSecurity_1.botDetection);
-// 9. Threat Score Check
-app.use(enhancedSecurity_1.threatScoreCheck);
-// 10. Existing security middleware
-app.use(security_2.suspiciousPatternMiddleware);
-app.use(security_2.csrfProtectionMiddleware);
-// IP-based rate limiting (глобальный)
-if (process.env.NODE_ENV === 'production') {
-    app.use(security_2.ipRateLimitMiddleware);
+// Input Validation & Security
+app.use(securityMiddleware_1.default.inputValidation);
+app.use(securityMiddleware_1.default.botDetection);
+app.use(securityMiddleware_1.default.threatScoreCheck);
+app.use(securityMiddleware_1.default.csrfProtection);
+// IP-based rate limiting
+if (env_1.default.NODE_ENV === 'production') {
+    app.use(securityMiddleware_1.default.ipRateLimit);
 }
-// Metrics middleware (должен быть до роутов)
+// Metrics middleware
 app.use(metrics_2.metricsMiddleware);
-// Session configuration with Redis store
+// Session configuration
 app.use((0, express_session_1.default)({
     store: new connect_redis_1.default({ client: redis_2.default }),
-    secret: process.env.SESSION_SECRET || 'fallback-session-secret',
+    secret: env_1.default.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        secure: env_1.default.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: constants_1.SECURITY.SESSION_MAX_AGE,
+        sameSite: env_1.default.NODE_ENV === 'production' ? 'strict' : 'lax',
     },
 }));
-// Rate limiting - общий
+// Rate limiting
 const generalLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
+    windowMs: constants_1.RATE_LIMITS.API.windowMs,
+    max: constants_1.RATE_LIMITS.API.max,
     message: { error: 'Too many requests from this IP, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Too many requests from this IP, please try again later.' });
-    },
 });
-// Rate limiting - строгий для авторизации
 const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // только 5 попыток входа за 15 минут
+    windowMs: constants_1.RATE_LIMITS.AUTH.windowMs,
+    max: constants_1.RATE_LIMITS.AUTH.max,
     message: { error: 'Too many login attempts, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
-    skipSuccessfulRequests: true, // не считаем успешные попытки
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Too many login attempts, please try again later.' });
-    },
+    skipSuccessfulRequests: true,
 });
-// Rate limiting для suggestions (автодополнение)
 const suggestionsLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 30, // 30 запросов в минуту
+    windowMs: constants_1.RATE_LIMITS.SUGGESTIONS.windowMs,
+    max: constants_1.RATE_LIMITS.SUGGESTIONS.max,
     message: { error: 'Too many suggestion requests, please slow down.' },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Too many suggestion requests, please slow down.' });
-    },
+});
+const emailVerificationLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 3, // 3 attempts per 15 minutes
+    message: { error: 'Too many verification attempts, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+const passwordResetLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    message: { error: 'Too many password reset attempts, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+const compareLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { error: 'Too many comparison requests, please slow down.' },
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 app.use('/api/', generalLimiter);
+// ============================================
+// ROUTES
+// ============================================
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({
         name: 'SmartPrice API',
-        version: '1.0.0',
+        version: '2.0.0',
         status: 'running',
         endpoints: {
             health: '/health',
-            api: '/api/*',
+            api: '/api/v1/*',
+            docs: '/api-docs',
             metrics: '/metrics'
         }
     });
 });
-// Health check with dependencies
-app.get('/health', async (req, res) => {
-    const health = {
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        services: {
-            database: 'unknown',
-            redis: 'unknown',
-        },
-    };
-    try {
-        const db = (await Promise.resolve().then(() => __importStar(require('./config/database')))).default;
-        await db.query('SELECT 1');
-        health.services.database = 'ok';
+// Health checks (no auth required)
+app.use('/health', health_1.default);
+// Swagger API Documentation
+app.use('/api-docs', swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(swagger_1.swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'SmartPrice API Documentation',
+    customfavIcon: '/favicon.ico',
+}));
+// GraphQL API
+app.all('/graphql', (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+        try {
+            const decoded = require('jsonwebtoken').verify(token, env_1.default.JWT_SECRET);
+            req.userId = decoded.userId;
+        }
+        catch (error) {
+            // Invalid token, continue without userId
+        }
     }
-    catch (e) {
-        health.services.database = 'error';
-        health.status = 'degraded';
-        console.error('❌ Database health check failed:', e);
+    next();
+}, (0, express_2.createHandler)({
+    schema: schema_1.schema,
+    context: (req) => ({ userId: req.raw.userId }),
+}));
+// API v1 Router
+const v1Router = express_1.default.Router();
+v1Router.use('/search', securityMiddleware_1.default.endpointRateLimit('SEARCH'), search_1.default);
+v1Router.use('/auth', authLimiter, securityMiddleware_1.default.credentialStuffingDetection, auth_1.default);
+v1Router.use('/auth/forgot-password', passwordResetLimiter);
+v1Router.use('/auth/reset-password', passwordResetLimiter);
+v1Router.use('/email-verification', emailVerificationLimiter, emailVerification_1.default);
+v1Router.use('/sessions', securityMiddleware_1.default.anomalyDetection, sessions_1.default);
+v1Router.use('/api-keys', apiKeys_1.default);
+v1Router.use('/admin', admin_1.default);
+v1Router.use('/security', security_1.default);
+v1Router.use('/owner', owner_1.default);
+v1Router.use('/favorites', securityMiddleware_1.default.anomalyDetection, favorites_1.default);
+v1Router.use('/price-tracking', priceTracking_1.default);
+v1Router.use('/analytics', analytics_1.default);
+v1Router.use('/suggestions', suggestionsLimiter, suggestions_1.default);
+v1Router.use('/price-history', priceHistory_1.default);
+v1Router.use('/compare', compareLimiter, compare_1.default);
+app.use('/api/v1', v1Router);
+// Backward compatibility redirect
+app.use('/api', (req, res, next) => {
+    if (!req.path.startsWith('/v1')) {
+        const newPath = `/api/v1${req.path}`;
+        logger_1.default.info(`Redirecting ${req.path} to ${newPath}`);
+        return res.redirect(301, newPath);
     }
-    try {
-        await redis_2.default.ping();
-        health.services.redis = 'ok';
-    }
-    catch (e) {
-        health.services.redis = 'error';
-        health.status = 'degraded';
-        console.error('❌ Redis health check failed:', e);
-    }
-    const statusCode = health.status === 'ok' ? 200 : 503;
-    res.status(statusCode).json(health);
+    next();
 });
-// API routes
-app.use('/api/search', (0, advancedSecurity_1.advancedRateLimitMiddleware)('search'), search_1.default);
-app.use('/api/auth', authLimiter, enhancedSecurity_1.credentialStuffingDetection, auth_1.default);
-app.use('/api/email-verification', emailVerification_1.default);
-app.use('/api/sessions', enhancedSecurity_1.anomalyDetection, enhancedSecurity_1.accountTakeoverDetection, sessions_1.default);
-app.use('/api/api-keys', apiKeys_1.default);
-app.use('/api/admin', admin_1.default);
-app.use('/api/security', security_1.default); // NEW: Ultimate Security Routes
-app.use('/api/favorites', enhancedSecurity_1.anomalyDetection, favorites_1.default);
-app.use('/api/price-tracking', priceTracking_1.default);
-app.use('/api/analytics', analytics_1.default);
-app.use('/api/suggestions', suggestionsLimiter, suggestions_1.default);
-app.use('/api/price-history', priceHistory_1.default);
-app.use('/api/compare', compare_1.default);
 app.use('/metrics', metrics_1.default);
 // CSP violation report endpoint
-app.post('/api/csp-report', express_1.default.json({ type: 'application/csp-report' }), advancedSecurity_1.cspReportHandler);
+app.post('/api/csp-report', express_1.default.json({ type: 'application/csp-report' }), securityMiddleware_1.default.cspReportHandler);
 // 404 handler
 app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
+    res.status(constants_1.HTTP_STATUS.NOT_FOUND).json({
+        error: 'Endpoint not found',
+        code: 'NOT_FOUND',
+    });
 });
 // Error metrics middleware
 app.use(metrics_2.errorMetricsMiddleware);
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error('❌ Unhandled error:', err);
-    const statusCode = err.statusCode || 500;
-    const message = process.env.NODE_ENV === 'production'
-        ? 'Internal server error'
-        : err.message;
-    res.status(statusCode).json({
-        error: message,
-        ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
-    });
+    (0, errors_1.handleError)(err, res);
 });
+// ============================================
+// SERVER STARTUP
+// ============================================
 async function startServer() {
     try {
-        // Подключаемся к Redis (критично для работы)
+        logger_1.default.info('='.repeat(60));
+        logger_1.default.info('SmartPrice Backend - Production Ready Edition');
+        logger_1.default.info('='.repeat(60));
+        // Connect to Redis
         await (0, redis_1.connectRedis)();
-        console.log('✅ Redis connected');
-        // Проверяем подключение к БД
-        const db = (await Promise.resolve().then(() => __importStar(require('./config/database')))).default;
-        await db.query('SELECT 1');
-        console.log('✅ Database connected');
-        // Инициализируем схему БД (если еще не создана)
+        logger_1.default.info('Redis connected');
+        // Check database
+        const dbHealthy = await (0, database_1.checkDatabaseHealth)();
+        if (!dbHealthy) {
+            throw new Error('Database connection failed');
+        }
+        logger_1.default.info('Database connected');
+        // Initialize database schema
         await (0, initSchema_1.initializeDatabase)();
-        // Включаем pg_stat_statements для мониторинга
+        // Enable pg_stat_statements
         await databaseMonitoringService_1.databaseMonitoringService.enableStatements();
-        // ============================================
-        // ULTIMATE SECURITY INITIALIZATION
-        // ============================================
-        // Инициализация Secrets Management
+        // Initialize Secrets Management
         await secretsManagementService_1.default.initialize();
-        console.log('🔐 Secrets Management initialized');
-        // Запуск Security Monitoring Service
+        logger_1.default.info('Secrets Management initialized');
+        // Start Security Monitoring
         securityMonitoringService_1.default.startMonitoring();
-        console.log('🔒 Security Monitoring started');
-        // Построение профилей пользователей для anomaly detection (фоновая задача)
+        logger_1.default.info('Security Monitoring started');
+        // Start Maintenance Jobs
+        maintenanceJob_1.default.start();
+        securityCleanupJob_1.default.start(24); // Каждые 24 часа
+        logger_1.default.info('Maintenance & Security Cleanup Jobs started');
+        // Build user behavior profiles (background)
         setTimeout(async () => {
-            console.log('🤖 Building user behavior profiles...');
+            logger_1.default.info('Building user behavior profiles...');
             await anomalyDetectionService_1.default.updateAllProfiles();
-            console.log('✅ User behavior profiles updated');
-        }, 60000); // Через 1 минуту после запуска
-        // Cache warming - предзагрузка популярных данных
+            logger_1.default.info('User behavior profiles updated');
+        }, 60000);
+        // Cache warming
         await advancedCacheService_1.advancedCacheService.warmCache(async () => {
-            console.log('🔥 Cache warming started...');
-            // Здесь можно добавить предзагрузку популярных данных
+            logger_1.default.info('Cache warming started...');
         });
-        // Запускаем background jobs
-        priceCheckJob_1.default.start(60); // Проверка цен каждый час
-        priceHistoryJob_1.default.start(24); // Сбор истории раз в сутки
-        // Периодическая очистка старых метрик
-        setInterval(() => {
-            metricsService_1.default.cleanup();
-        }, 60 * 60 * 1000); // Каждый час
-        // Периодическая очистка истекших сессий
-        setInterval(async () => {
-            await sessionService_1.sessionService.cleanupExpiredSessions();
-        }, 60 * 60 * 1000); // Каждый час
-        // Периодическая очистка очередей
-        setInterval(async () => {
-            await queueService_1.queueService.cleanQueues();
-        }, 24 * 60 * 60 * 1000); // Раз в сутки
-        // Периодическое обновление профилей пользователей
-        setInterval(async () => {
-            await anomalyDetectionService_1.default.updateAllProfiles();
-        }, 24 * 60 * 60 * 1000); // Раз в сутки
-        // Периодическая проверка необходимости ротации секретов
-        setInterval(async () => {
-            const needsRotation = await secretsManagementService_1.default.checkRotationNeeded('jwt_secret');
-            if (needsRotation) {
-                console.log('⚠️  JWT secret rotation needed!');
-            }
-        }, 7 * 24 * 60 * 60 * 1000); // Раз в неделю
+        // Start background jobs
+        priceCheckJob_1.default.start(60);
+        priceHistoryJob_1.default.start(24);
         const server = app.listen(PORT, '0.0.0.0', () => {
-            console.log('\n' + '='.repeat(60));
-            console.log('🚀 SmartPrice Backend - ULTIMATE SECURITY EDITION');
-            console.log('='.repeat(60));
-            console.log(`✅ Server running on port ${PORT}`);
-            console.log(`📊 Health check: /health`);
-            console.log(`📈 Metrics: /metrics`);
-            console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log('\n🔒 SECURITY FEATURES:');
-            console.log('  ✓ 2FA/MFA Authentication');
-            console.log('  ✓ Intrusion Prevention System (IPS)');
-            console.log('  ✓ Web Application Firewall (WAF)');
-            console.log('  ✓ DDoS Protection');
-            console.log('  ✓ Anomaly Detection (ML-based)');
-            console.log('  ✓ Vulnerability Scanner');
-            console.log('  ✓ Security Monitoring & Alerting');
-            console.log('  ✓ Secrets Management & Rotation');
-            console.log('  ✓ Advanced Rate Limiting');
-            console.log('  ✓ Bot Detection');
-            console.log('  ✓ Credential Stuffing Protection');
-            console.log('  ✓ Account Takeover Detection');
-            console.log('  ✓ Geo-blocking Support');
-            console.log('\n⚡ PERFORMANCE FEATURES:');
-            console.log('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
-            console.log('  ✓ Database Query Optimization');
-            console.log('  ✓ Connection Pooling');
-            console.log('  ✓ Async Processing (Bull Queues)');
-            console.log('  ✓ CDN Ready');
-            console.log('  ✓ HTTP/2 Support');
-            console.log('\n📧 Queue service initialized');
-            console.log('='.repeat(60) + '\n');
+            logger_1.default.info('='.repeat(60));
+            logger_1.default.info(`Server running on port ${PORT}`);
+            logger_1.default.info(`Health check: /health`);
+            logger_1.default.info(`Metrics: /metrics`);
+            logger_1.default.info(`API Docs: /api-docs`);
+            logger_1.default.info(`GraphQL: /graphql`);
+            logger_1.default.info(`Environment: ${env_1.default.NODE_ENV}`);
+            logger_1.default.info('SECURITY FEATURES:');
+            logger_1.default.info('  ✓ Refresh Token Authentication');
+            logger_1.default.info('  ✓ Role-Based Access Control');
+            logger_1.default.info('  ✓ 2FA/MFA Authentication');
+            logger_1.default.info('  ✓ Intrusion Prevention System (IPS)');
+            logger_1.default.info('  ✓ Web Application Firewall (WAF)');
+            logger_1.default.info('  ✓ DDoS Protection');
+            logger_1.default.info('  ✓ Anomaly Detection (ML-based)');
+            logger_1.default.info('  ✓ Vulnerability Scanner');
+            logger_1.default.info('  ✓ Security Monitoring & Alerting');
+            logger_1.default.info('  ✓ Secrets Management & Rotation');
+            logger_1.default.info('  ✓ Bot Detection');
+            logger_1.default.info('  ✓ Credential Stuffing Protection');
+            logger_1.default.info('  ✓ Account Takeover Detection');
+            logger_1.default.info('PERFORMANCE FEATURES:');
+            logger_1.default.info('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
+            logger_1.default.info('  ✓ Database Query Optimization');
+            logger_1.default.info('  ✓ Connection Pooling');
+            logger_1.default.info('  ✓ Async Processing (Bull Queues)');
+            logger_1.default.info('  ✓ Graceful Degradation');
+            logger_1.default.info('  ✓ Circuit Breaker Pattern');
+            logger_1.default.info('RELIABILITY FEATURES:');
+            logger_1.default.info('  ✓ Health Checks (liveness & readiness)');
+            logger_1.default.info('  ✓ Automatic Maintenance Jobs');
+            logger_1.default.info('  ✓ Error Standardization');
+            logger_1.default.info('  ✓ Comprehensive Logging');
+            logger_1.default.info('  ✓ WebSocket Real-time Updates');
+            logger_1.default.info('  ✓ GraphQL API with Subscriptions');
+            logger_1.default.info('='.repeat(60));
         });
+        // Initialize WebSocket for Socket.IO
+        websocketService_1.default.initialize(server);
+        websocketService_1.default.setPubSub(resolvers_1.pubsub);
+        // Initialize GraphQL WebSocket Server
+        const wsServer = new ws_1.WebSocketServer({
+            server,
+            path: '/graphql',
+        });
+        useGraphQLWsServer({
+            schema: schema_1.schema,
+            context: async (ctx) => {
+                const token = ctx.connectionParams?.authorization?.split(' ')[1];
+                if (token) {
+                    try {
+                        const decoded = require('jsonwebtoken').verify(token, env_1.default.JWT_SECRET);
+                        return { userId: decoded.userId };
+                    }
+                    catch (error) {
+                        return {};
+                    }
+                }
+                return {};
+            },
+        }, wsServer);
+        logger_1.default.info('GraphQL WebSocket server initialized');
         server.on('error', (error) => {
             if (error.code === 'EADDRINUSE') {
-                console.error(`❌ Port ${PORT} is already in use`);
+                logger_1.default.error(`Port ${PORT} is already in use`);
             }
             else {
-                console.error('❌ Server error:', error);
+                logger_1.default.error('Server error:', error);
             }
             process.exit(1);
         });
     }
     catch (error) {
-        console.error('❌ Failed to start server:', error);
+        logger_1.default.error('Failed to start server:', error);
         process.exit(1);
     }
 }
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('⚠️ SIGTERM received, shutting down gracefully...');
-    priceCheckJob_1.default.stop();
-    priceHistoryJob_1.default.stop();
-    securityMonitoringService_1.default.stopMonitoring();
+// Graceful shutdown с таймаутом
+const SHUTDOWN_TIMEOUT = 30000; // 30 секунд
+async function gracefulShutdown(signal) {
+    logger_1.default.warn(`${signal} received, shutting down gracefully...`);
+    const shutdownTimer = setTimeout(() => {
+        logger_1.default.error('Graceful shutdown timeout, forcing exit');
+        process.exit(1);
+    }, SHUTDOWN_TIMEOUT);
     try {
-        await queueService_1.queueService.close();
-        console.log('✅ Queue service closed');
-    }
-    catch (err) {
-        console.error('❌ Error closing queue service:', err);
-    }
-    try {
+        // Останавливаем jobs
+        priceCheckJob_1.default.stop();
+        priceHistoryJob_1.default.stop();
+        maintenanceJob_1.default.stop();
+        securityCleanupJob_1.default.stop();
+        securityMonitoringService_1.default.stopMonitoring();
+        // Закрываем Redis
         await redis_2.default.quit();
-        console.log('✅ Redis connection closed');
+        logger_1.default.info('Redis connection closed');
+        // Закрываем database pool
+        await database_1.pool.end();
+        logger_1.default.info('Database pool closed');
+        clearTimeout(shutdownTimer);
+        logger_1.default.info('Graceful shutdown completed');
+        process.exit(0);
     }
     catch (err) {
-        console.error('❌ Error closing Redis:', err);
+        logger_1.default.error('Error during shutdown:', err);
+        clearTimeout(shutdownTimer);
+        process.exit(1);
     }
-    process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Обработка необработанных ошибок
+process.on('unhandledRejection', (reason, promise) => {
+    logger_1.default.error('Unhandled Rejection at:', { promise, reason });
+    // Не завершаем процесс, но логируем
 });
-process.on('SIGINT', async () => {
-    console.log('⚠️ SIGINT received, shutting down gracefully...');
-    priceCheckJob_1.default.stop();
-    priceHistoryJob_1.default.stop();
-    securityMonitoringService_1.default.stopMonitoring();
-    try {
-        await queueService_1.queueService.close();
-        console.log('✅ Queue service closed');
-    }
-    catch (err) {
-        console.error('❌ Error closing queue service:', err);
-    }
-    try {
-        await redis_2.default.quit();
-        console.log('✅ Redis connection closed');
-    }
-    catch (err) {
-        console.error('❌ Error closing Redis:', err);
-    }
-    process.exit(0);
+process.on('uncaughtException', (error) => {
+    logger_1.default.error('Uncaught Exception:', error);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 startServer();

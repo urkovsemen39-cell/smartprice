@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const analyticsService_1 = __importDefault(require("../../services/analytics/analyticsService"));
 const auth_1 = require("../../middleware/auth");
+const logger_1 = __importDefault(require("../../utils/logger"));
 const router = (0, express_1.Router)();
 router.post('/click', auth_1.optionalAuthMiddleware, async (req, res) => {
     try {
@@ -17,7 +18,7 @@ router.post('/click', auth_1.optionalAuthMiddleware, async (req, res) => {
         res.json({ message: 'Click tracked' });
     }
     catch (error) {
-        console.error('❌ Track click error:', error);
+        logger_1.default.error('Track click error:', error);
         res.status(500).json({ error: 'Failed to track click' });
     }
 });
@@ -28,7 +29,7 @@ router.get('/popular-queries', async (req, res) => {
         res.json({ queries });
     }
     catch (error) {
-        console.error('❌ Get popular queries error:', error);
+        logger_1.default.error('Get popular queries error:', error);
         res.status(500).json({ error: 'Failed to get popular queries' });
     }
 });
@@ -39,7 +40,7 @@ router.get('/history', auth_1.authMiddleware, async (req, res) => {
         res.json({ history });
     }
     catch (error) {
-        console.error('❌ Get search history error:', error);
+        logger_1.default.error('Get search history error:', error);
         res.status(500).json({ error: 'Failed to get search history' });
     }
 });

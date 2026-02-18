@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { emailVerificationService } from '../../services/email/emailVerificationService';
 import { authenticateToken } from '../../middleware/auth';
 import { auditService } from '../../services/audit/auditService';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.post('/send', authenticateToken, async (req: Request, res: Response) => {
       message: 'Verification code sent to your email' 
     });
   } catch (error: any) {
-    console.error('Error sending verification code:', error);
+    logger.error('Error sending verification code:', error);
     res.status(500).json({ error: error.message || 'Failed to send verification code' });
   }
 });
@@ -56,7 +57,7 @@ router.post('/verify', authenticateToken, async (req: Request, res: Response) =>
       });
     }
   } catch (error: any) {
-    console.error('Error verifying code:', error);
+    logger.error('Error verifying code:', error);
     res.status(400).json({ error: error.message || 'Invalid verification code' });
   }
 });
@@ -69,7 +70,7 @@ router.get('/status', authenticateToken, async (req: Request, res: Response) => 
 
     res.json({ verified: isVerified });
   } catch (error) {
-    console.error('Error checking verification status:', error);
+    logger.error('Error checking verification status:', error);
     res.status(500).json({ error: 'Failed to check verification status' });
   }
 });

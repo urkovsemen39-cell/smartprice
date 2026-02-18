@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Product } from '../../types';
+import logger from '../../utils/logger';
+import { UI } from '../../config/constants';
 
 const router = Router();
 
@@ -12,8 +14,10 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Products must be an array' });
     }
 
-    if (products.length < 2 || products.length > 4) {
-      return res.status(400).json({ error: 'You can compare 2 to 4 products' });
+    if (products.length < 2 || products.length > UI.MAX_COMPARE_PRODUCTS) {
+      return res.status(400).json({ 
+        error: `You can compare 2 to ${UI.MAX_COMPARE_PRODUCTS} products` 
+      });
     }
 
     // Валидация каждого товара
@@ -38,7 +42,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.json(comparison);
   } catch (error) {
-    console.error('❌ Compare error:', error);
+    logger.error('Compare error:', error);
     res.status(500).json({ error: 'Failed to compare products' });
   }
 });

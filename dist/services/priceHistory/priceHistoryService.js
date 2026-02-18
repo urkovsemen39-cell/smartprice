@@ -5,13 +5,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceHistoryService = void 0;
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class PriceHistoryService {
     async recordPrice(productId, marketplace, price) {
         try {
             await database_1.default.query('INSERT INTO price_history (product_id, marketplace, price) VALUES ($1, $2, $3)', [productId, marketplace, price]);
         }
         catch (error) {
-            console.error('❌ Record price error:', error);
+            logger_1.default.error('Record price error:', error);
             throw error;
         }
     }
@@ -24,7 +25,7 @@ class PriceHistoryService {
             return result.rows;
         }
         catch (error) {
-            console.error('❌ Get price history error:', error);
+            logger_1.default.error('Get price history error:', error);
             throw error;
         }
     }
@@ -36,7 +37,7 @@ class PriceHistoryService {
             return result.rows.length > 0 ? Number(result.rows[0].price) : null;
         }
         catch (error) {
-            console.error('❌ Get latest price error:', error);
+            logger_1.default.error('Get latest price error:', error);
             return null;
         }
     }
@@ -47,7 +48,7 @@ class PriceHistoryService {
             return result.rowCount || 0;
         }
         catch (error) {
-            console.error('❌ Clean old history error:', error);
+            logger_1.default.error('Clean old history error:', error);
             return 0;
         }
     }

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const favoritesService_1 = __importDefault(require("../../services/favorites/favoritesService"));
 const auth_1 = require("../../middleware/auth");
+const logger_1 = __importDefault(require("../../utils/logger"));
 const router = (0, express_1.Router)();
 router.use(auth_1.authMiddleware);
 router.get('/', async (req, res) => {
@@ -16,7 +17,7 @@ router.get('/', async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error('❌ Get favorites error:', error);
+        logger_1.default.error('Get favorites error:', error);
         res.status(500).json({ error: 'Failed to get favorites' });
     }
 });
@@ -40,7 +41,7 @@ router.post('/', async (req, res) => {
         res.json({ favorite });
     }
     catch (error) {
-        console.error('❌ Add favorite error:', error);
+        logger_1.default.error('Add favorite error:', error);
         res.status(500).json({ error: 'Failed to add favorite' });
     }
 });
@@ -56,7 +57,7 @@ router.delete('/:productId', async (req, res) => {
         }
     }
     catch (error) {
-        console.error('❌ Remove favorite error:', error);
+        logger_1.default.error('Remove favorite error:', error);
         res.status(500).json({ error: 'Failed to remove favorite' });
     }
 });
@@ -67,7 +68,7 @@ router.get('/check/:productId', async (req, res) => {
         res.json({ isFavorite });
     }
     catch (error) {
-        console.error('❌ Check favorite error:', error);
+        logger_1.default.error('Check favorite error:', error);
         res.status(500).json({ error: 'Failed to check favorite' });
     }
 });

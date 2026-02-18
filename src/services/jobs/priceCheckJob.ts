@@ -2,6 +2,7 @@ import priceTrackingService from '../priceTracking/priceTrackingService';
 import priceHistoryService from '../priceHistory/priceHistoryService';
 import emailService from '../email/emailService';
 import db from '../../config/database';
+import logger from '../../utils/logger';
 
 export class PriceCheckJob {
   private isRunning = false;
@@ -9,11 +10,11 @@ export class PriceCheckJob {
 
   start(intervalMinutes: number = 60) {
     if (this.intervalId) {
-      console.log('⚠️ Price check job already running');
+      logger.warn('Price check job already running');
       return;
     }
 
-    console.log(`✅ Starting price check job (every ${intervalMinutes} minutes)`);
+    logger.info(`Starting price check job (every ${intervalMinutes} minutes)`);
     
     // Запускаем сразу
     this.checkPrices();
@@ -28,22 +29,22 @@ export class PriceCheckJob {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('✅ Price check job stopped');
+      logger.info('Price check job stopped');
     }
   }
 
   private async checkPrices() {
     if (this.isRunning) {
-      console.log('⚠️ Price check already in progress, skipping...');
+      logger.warn('Price check already in progress, skipping...');
       return;
     }
 
     this.isRunning = true;
-    console.log('🔍 Starting price check...');
+    logger.info('Starting price check...');
 
     try {
       const alerts = await priceTrackingService.getAlertsToCheck();
-      console.log(`📊 Checking ${alerts.length} price alerts`);
+      logger.info(`Checking ${alerts.length} price alerts`);
 
       let notifiedCount = 0;
       let updatedCount = 0;
@@ -108,20 +109,20 @@ export class PriceCheckJob {
                 await priceTrackingService.checkAndNotify(alert.id);
                 notifiedCount++;
 
-                console.log(`✅ Notified ${name || email} about ${alert.product_name}`);
+                logger.info(`Notified ${name || email} about ${alert.product_name}`);
               } else {
-                console.warn(`⚠️ Failed to send email to ${email}`);
+                logger.warn(`Failed to send email to ${email}`);
               }
             }
           }
         } catch (error) {
-          console.error(`❌ Error checking alert ${alert.id}:`, error);
+          logger.error(`Error checking alert ${alert.id}:`, error);
         }
       }
 
-      console.log(`✅ Price check completed. Updated: ${updatedCount}, Notified: ${notifiedCount}`);
+      logger.info(`Price check completed. Updated: ${updatedCount}, Notified: ${notifiedCount}`);
     } catch (error) {
-      console.error('❌ Price check job error:', error);
+      logger.error('Price check job error:', error);
     } finally {
       this.isRunning = false;
     }

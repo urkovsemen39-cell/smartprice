@@ -3,6 +3,7 @@ import { pool } from '../../config/database';
 import { redisClient } from '../../config/redis';
 import { emailService } from './emailService';
 import { setWithExpiry } from '../../utils/redisHelpers';
+import logger from '../../utils/logger';
 
 class EmailVerificationService {
   // Генерация 6-значного кода
@@ -42,10 +43,10 @@ class EmailVerificationService {
       // Отправка email
       await emailService.sendVerificationEmail(email, code);
 
-      console.log(`✅ Verification code sent to user ${userId}`);
+      logger.info(`Verification code sent to user ${userId}`);
       return true;
     } catch (error) {
-      console.error('❌ Error sending verification code:', error);
+      logger.error('Error sending verification code:', error);
       throw error;
     }
   }
@@ -96,10 +97,10 @@ class EmailVerificationService {
       await redisClient.del(verificationKey);
       await redisClient.del(attemptsKey);
 
-      console.log(`✅ Email verified for user ${userId}`);
+      logger.info(`Email verified for user ${userId}`);
       return true;
     } catch (error) {
-      console.error('❌ Error verifying code:', error);
+      logger.error('Error verifying code:', error);
       throw error;
     }
   }

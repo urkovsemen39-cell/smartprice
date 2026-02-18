@@ -1,6 +1,7 @@
 import { pool } from '../../config/database';
 import { redisClient } from '../../config/redis';
 import { emailService } from '../email/emailService';
+import logger from '../../utils/logger';
 
 interface Session {
   id: number;
@@ -37,21 +38,22 @@ class SessionService {
         await emailService.sendNewSessionAlert(email, ipAddress, userAgent);
       }
 
-      console.log(`✅ Session created for user ${userId}`);
+      logger.info(`Session created for user ${userId}`);
     } catch (error) {
-      console.error('❌ Error creating session:', error);
+      logger.error('Error creating session:', error);
       throw error;
     }
   }
 
-  // Получение всех активных сессий пользователя
-  async getUserSessions(userId: number): Promise<Session[]> {
+  // Получение всех активных сессий пользователя (с пагинацией)
+  async getUserSessions(userId: number, limit: number = 20, offset: number = 0): Promise<Session[]> {
     try {
       const result = await pool.query(
         `SELECT * FROM user_sessions 
          WHERE user_id = $1 AND is_active = true AND expires_at > NOW()
-         ORDER BY last_activity DESC`,
-        [userId]
+         ORDER BY last_activity DESC
+         LIMIT $2 OFFSET $3`,
+        [userId, limit, offset]
       );
 
       return result.rows.map(row => ({
@@ -65,8 +67,24 @@ class SessionService {
         isActive: row.is_active,
       }));
     } catch (error) {
-      console.error('❌ Error getting user sessions:', error);
+      logger.error('Error getting user sessions:', error);
       throw error;
+    }
+  }
+
+  // Получение количества активных сессий пользователя
+  async getUserSessionsCount(userId: number): Promise<number> {
+    try {
+      const result = await pool.query(
+        `SELECT COUNT(*) as count FROM user_sessions 
+         WHERE user_id = $1 AND is_active = true AND expires_at > NOW()`,
+        [userId]
+      );
+
+      return parseInt(result.rows[0].count);
+    } catch (error) {
+      logger.error('Error getting user sessions count:', error);
+      return 0;
     }
   }
 
@@ -80,7 +98,8 @@ class SessionService {
         [sessionId]
       );
     } catch (error) {
-      console.error('❌ Error updating last activity:', error);
+      logger.error('Error updating last activity:', error);
+      // Не пробрасываем ошибку, так как это не критично
     }
   }
 
@@ -97,10 +116,10 @@ class SessionService {
       // Удаление из Redis
       await redisClient.del(`sess:${sessionId}`);
 
-      console.log(`✅ Session ${sessionId} terminated`);
-      return result.rowCount > 0;
+      logger.info(`Session ${sessionId} terminated`);
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
-      console.error('❌ Error terminating session:', error);
+      logger.error('Error terminating session:', error);
       throw error;
     }
   }
@@ -128,10 +147,10 @@ class SessionService {
         await redisClient.del(`sess:${row.session_id}`);
       }
 
-      console.log(`✅ Terminated ${result.rowCount} sessions for user ${userId}`);
-      return result.rowCount;
+      logger.info(`Terminated ${result.rowCount ?? 0} sessions for user ${userId}`);
+      return result.rowCount ?? 0;
     } catch (error) {
-      console.error('❌ Error terminating sessions:', error);
+      logger.error('Error terminating sessions:', error);
       throw error;
     }
   }
@@ -146,10 +165,10 @@ class SessionService {
          AND is_active = true`
       );
 
-      console.log(`✅ Cleaned up ${result.rowCount} expired sessions`);
-      return result.rowCount;
+      logger.info(`Cleaned up ${result.rowCount ?? 0} expired sessions`);
+      return result.rowCount ?? 0;
     } catch (error) {
-      console.error('❌ Error cleaning up sessions:', error);
+      logger.error('Error cleaning up sessions:', error);
       return 0;
     }
   }
@@ -163,9 +182,9 @@ class SessionService {
         [sessionId]
       );
 
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
-      console.error('❌ Error checking session validity:', error);
+      logger.error('Error checking session validity:', error);
       return false;
     }
   }

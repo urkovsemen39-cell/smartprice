@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FavoritesService = void 0;
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class FavoritesService {
     async addFavorite(userId, product) {
         try {
@@ -33,7 +34,7 @@ class FavoritesService {
             return result.rows[0];
         }
         catch (error) {
-            console.error('❌ Add favorite error:', error);
+            logger_1.default.error('Add favorite error:', error);
             throw error;
         }
     }
@@ -43,7 +44,7 @@ class FavoritesService {
             return result.rowCount > 0;
         }
         catch (error) {
-            console.error('❌ Remove favorite error:', error);
+            logger_1.default.error('Remove favorite error:', error);
             throw error;
         }
     }
@@ -63,7 +64,7 @@ class FavoritesService {
             };
         }
         catch (error) {
-            console.error('❌ Get favorites error:', error);
+            logger_1.default.error('Get favorites error:', error);
             throw error;
         }
     }
@@ -73,7 +74,7 @@ class FavoritesService {
             return result.rows.length > 0;
         }
         catch (error) {
-            console.error('❌ Check favorite error:', error);
+            logger_1.default.error('Check favorite error:', error);
             return false;
         }
     }

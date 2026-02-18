@@ -5,20 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsService = void 0;
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class AnalyticsService {
     async trackClick(userId, productId, marketplace, query) {
         try {
             await database_1.default.query('INSERT INTO click_analytics (user_id, product_id, marketplace, query) VALUES ($1, $2, $3, $4)', [userId, productId, marketplace, query]);
         }
         catch (error) {
-            console.error('❌ Track click error:', error);
+            logger_1.default.error('Track click error:', error);
         }
     }
     async trackSearch(userId, query, filters, resultsCount) {
         try {
             // Валидация и санитизация
             if (typeof query !== 'string' || query.length > 500) {
-                console.warn('⚠️ Invalid query for tracking');
+                logger_1.default.warn('Invalid query for tracking');
                 return;
             }
             let filtersJson = '{}';
@@ -26,7 +27,7 @@ class AnalyticsService {
                 filtersJson = JSON.stringify(filters || {});
             }
             catch (e) {
-                console.warn('⚠️ Failed to stringify filters');
+                logger_1.default.warn('Failed to stringify filters');
             }
             await database_1.default.query('INSERT INTO search_history (user_id, query, filters, results_count) VALUES ($1, $2, $3, $4)', [userId, query, filtersJson, resultsCount]);
             await database_1.default.query(`INSERT INTO popular_queries (query, search_count, last_searched)
@@ -35,7 +36,7 @@ class AnalyticsService {
          SET search_count = popular_queries.search_count + 1, last_searched = NOW()`, [query.toLowerCase().trim()]);
         }
         catch (error) {
-            console.error('❌ Track search error:', error);
+            logger_1.default.error('Track search error:', error);
         }
     }
     async getPopularQueries(limit = 10) {
@@ -44,7 +45,7 @@ class AnalyticsService {
             return result.rows.map(row => row.query);
         }
         catch (error) {
-            console.error('❌ Get popular queries error:', error);
+            logger_1.default.error('Get popular queries error:', error);
             return [];
         }
     }
@@ -54,7 +55,7 @@ class AnalyticsService {
             return result.rows;
         }
         catch (error) {
-            console.error('❌ Get search history error:', error);
+            logger_1.default.error('Get search history error:', error);
             return [];
         }
     }
@@ -71,7 +72,7 @@ class AnalyticsService {
             return 'rare';
         }
         catch (error) {
-            console.error('❌ Get query popularity error:', error);
+            logger_1.default.error('Get query popularity error:', error);
             return 'normal';
         }
     }
@@ -83,7 +84,7 @@ class AnalyticsService {
             return result.rows[0].search_count;
         }
         catch (error) {
-            console.error('❌ Get query popularity count error:', error);
+            logger_1.default.error('Get query popularity count error:', error);
             return 0;
         }
     }

@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.YandexMarketAdapter = void 0;
+const logger_1 = __importDefault(require("../../utils/logger"));
 class YandexMarketAdapter {
     constructor() {
         this.name = 'Яндекс.Маркет';
@@ -21,7 +25,7 @@ class YandexMarketAdapter {
             return [];
         }
         catch (error) {
-            console.error(`❌ ${this.name} error:`, error);
+            logger_1.default.error(`${this.name} error:`, error);
             return [];
         }
     }

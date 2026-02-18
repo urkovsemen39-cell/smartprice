@@ -1,8 +1,7 @@
 import crypto from 'crypto';
 import { pool } from '../../config/database';
 import { auditService } from '../audit/auditService';
-import fs from 'fs/promises';
-import path from 'path';
+import logger, { logSecurity } from '../../utils/logger';
 
 interface SecretRotationResult {
   success: boolean;
@@ -28,8 +27,8 @@ class SecretsManagementService {
     } else {
       // Генерация нового мастер-ключа (только для dev)
       this.masterKey = crypto.randomBytes(32);
-      console.warn('⚠️  Generated new master key. In production, use AWS Secrets Manager or Vault!');
-      console.warn('⚠️  Set MASTER_ENCRYPTION_KEY in environment:', this.masterKey.toString('hex'));
+      logger.warn('Generated new master key. In production, use AWS Secrets Manager or Vault!');
+      logger.warn('Set MASTER_ENCRYPTION_KEY in environment: ' + this.masterKey.toString('hex'));
     }
   }
 
@@ -97,11 +96,11 @@ class SecretsManagementService {
     );
 
     // В production это должно обновлять AWS Secrets Manager
-    console.log('🔐 New JWT Secret:', newSecret);
-    console.log('⚠️  Update JWT_SECRET in your environment variables!');
+    logSecurity('JWT Secret rotated', { newSecretHash });
+    logger.warn('Update JWT_SECRET in your environment variables!');
 
     await auditService.log({
-      userId: userId || null,
+      userId: userId,
       action: 'jwt_secret_rotated',
       resourceType: 'security',
       details: { newSecretHash }
@@ -131,11 +130,11 @@ class SecretsManagementService {
       ['session_secret', userId || null, 'scheduled_rotation', oldSecretHash, newSecretHash]
     );
 
-    console.log('🔐 New Session Secret:', newSecret);
-    console.log('⚠️  Update SESSION_SECRET in your environment variables!');
+    logSecurity('Session Secret rotated', { newSecretHash });
+    logger.warn('Update SESSION_SECRET in your environment variables!');
 
     await auditService.log({
-      userId: userId || null,
+      userId: userId,
       action: 'session_secret_rotated',
       resourceType: 'security',
       details: { newSecretHash }
@@ -162,11 +161,11 @@ class SecretsManagementService {
       ['database_password', userId || null, 'scheduled_rotation', newPasswordHash]
     );
 
-    console.log('🔐 New Database Password:', newPassword);
-    console.log('⚠️  Update database password in Railway and DATABASE_URL!');
+    logSecurity('Database Password rotated', { newPasswordHash });
+    logger.warn('Update database password in Railway and DATABASE_URL!');
 
     await auditService.log({
-      userId: userId || null,
+      userId: userId,
       action: 'database_password_rotated',
       resourceType: 'security',
       details: { newPasswordHash }
@@ -231,7 +230,7 @@ class SecretsManagementService {
           
           results.push(result);
         } catch (error) {
-          console.error(`Failed to rotate ${secretType}:`, error);
+          logger.error(`Failed to rotate ${secretType}:`, error);
           results.push({
             success: false,
             secretType,
@@ -265,7 +264,7 @@ class SecretsManagementService {
       );
     }
 
-    console.log(`✅ Encrypted ${users.rows.length} email addresses`);
+    logger.info(`Encrypted ${users.rows.length} email addresses`);
   }
 
   /**

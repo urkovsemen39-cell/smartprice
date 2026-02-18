@@ -1,6 +1,8 @@
 // Email сервис для отправки уведомлений
 // Поддерживает SendGrid, AWS SES, и Nodemailer
 
+import logger from '../../utils/logger';
+
 export interface EmailOptions {
   to: string;
   subject: string;
@@ -21,9 +23,9 @@ export class EmailService {
     this.fromName = process.env.EMAIL_FROM_NAME || 'SmartPrice';
 
     if (this.provider !== 'none') {
-      console.log(`✅ Email service initialized with provider: ${this.provider}`);
+      logger.info(`Email service initialized with provider: ${this.provider}`);
     } else {
-      console.log('📧 Email service in development mode (logging only)');
+      logger.info('Email service in development mode (logging only)');
     }
   }
 
@@ -123,7 +125,7 @@ export class EmailService {
   private async send(options: EmailOptions): Promise<boolean> {
     // Development mode - только логирование
     if (this.provider === 'none') {
-      console.log('📧 Email (dev mode):', {
+      logger.info('Email (dev mode):', {
         from: `${this.fromName} <${this.fromEmail}>`,
         to: options.to,
         subject: options.subject,
@@ -141,11 +143,11 @@ export class EmailService {
         case 'nodemailer':
           return await this.sendWithNodemailer(options);
         default:
-          console.warn('⚠️ Unknown email provider:', this.provider);
+          logger.warn('Unknown email provider:', this.provider);
           return false;
       }
     } catch (error) {
-      console.error('❌ Email send error:', error);
+      logger.error('Email send error:', error);
       return false;
     }
   }
@@ -167,10 +169,10 @@ export class EmailService {
         text: options.text,
       });
 
-      console.log('✅ Email sent via SendGrid:', options.to);
+      logger.info('Email sent via SendGrid:', options.to);
       return true;
     } catch (error) {
-      console.error('❌ SendGrid error:', error);
+      logger.error('SendGrid error:', error);
       return false;
     }
   }
@@ -210,10 +212,10 @@ export class EmailService {
       };
 
       await ses.sendEmail(params).promise();
-      console.log('✅ Email sent via AWS SES:', options.to);
+      logger.info('Email sent via AWS SES:', options.to);
       return true;
     } catch (error) {
-      console.error('❌ AWS SES error:', error);
+      logger.error('AWS SES error:', error);
       return false;
     }
   }
@@ -241,10 +243,10 @@ export class EmailService {
         text: options.text,
       });
 
-      console.log('✅ Email sent via Nodemailer:', options.to);
+      logger.info('Email sent via Nodemailer:', options.to);
       return true;
     } catch (error) {
-      console.error('❌ Nodemailer error:', error);
+      logger.error('Nodemailer error:', error);
       return false;
     }
   }

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const priceHistoryService_1 = __importDefault(require("../../services/priceHistory/priceHistoryService"));
 const auth_1 = require("../../middleware/auth");
+const logger_1 = __importDefault(require("../../utils/logger"));
 const router = (0, express_1.Router)();
 router.use(auth_1.optionalAuthMiddleware);
 // Получить историю цен для товара
@@ -24,7 +25,7 @@ router.get('/:productId', async (req, res) => {
         res.json({ history });
     }
     catch (error) {
-        console.error('❌ Get price history error:', error);
+        logger_1.default.error('Get price history error:', error);
         res.status(500).json({ error: 'Failed to get price history' });
     }
 });
@@ -42,7 +43,7 @@ router.post('/', async (req, res) => {
         res.json({ message: 'Price recorded' });
     }
     catch (error) {
-        console.error('❌ Record price error:', error);
+        logger_1.default.error('Record price error:', error);
         res.status(500).json({ error: 'Failed to record price' });
     }
 });

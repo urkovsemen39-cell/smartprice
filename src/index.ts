@@ -1,13 +1,22 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
+import swaggerUi from 'swagger-ui-express';
 import { connectRedis } from './config/redis';
 import redisClient from './config/redis';
+import { checkDatabaseHealth, pool } from './config/database';
 import { initializeDatabase } from './database/initSchema';
+import { swaggerSpec } from './config/swagger';
+import env from './config/env';
+import { RATE_LIMITS, SECURITY, HTTP_STATUS } from './config/constants';
+import { handleError } from './utils/errors';
+import logger from './utils/logger';
+
+// Routes
+import healthRoutes from './api/routes/health';
 import searchRoutes from './api/routes/search';
 import authRoutes from './api/routes/auth';
 import favoritesRoutes from './api/routes/favorites';
@@ -22,240 +31,270 @@ import sessionsRoutes from './api/routes/sessions';
 import apiKeysRoutes from './api/routes/apiKeys';
 import adminRoutes from './api/routes/admin';
 import securityRoutes from './api/routes/security';
+import ownerRoutes from './api/routes/owner';
+
+// Jobs
 import priceCheckJob from './services/jobs/priceCheckJob';
 import priceHistoryJob from './services/jobs/priceHistoryJob';
+import maintenanceJob from './services/jobs/maintenanceJob';
+import securityCleanupJob from './services/jobs/securityCleanupJob';
+
+// Middleware
 import { metricsMiddleware, errorMetricsMiddleware } from './middleware/metrics';
-import { 
-  ipRateLimitMiddleware, 
-  suspiciousPatternMiddleware, 
-  csrfProtectionMiddleware,
-  securityHeadersMiddleware 
-} from './middleware/security';
-import { 
-  advancedRateLimitMiddleware,
-  cspMiddleware,
-  cspReportHandler 
-} from './middleware/advancedSecurity';
+import securityMiddleware from './middleware/securityMiddleware';
 import wafMiddleware from './middleware/waf';
 import { ddosProtection, geoBlocking } from './middleware/ddosProtection';
-import { 
-  inputValidation, 
-  anomalyDetection, 
-  botDetection,
-  credentialStuffingDetection,
-  accountTakeoverDetection,
-  threatScoreCheck 
-} from './middleware/enhancedSecurity';
-import metricsService from './services/monitoring/metricsService';
+import { requestIdMiddleware } from './middleware/requestId';
+import { cachingMiddleware } from './middleware/caching';
+import { createHandler } from 'graphql-http/lib/use/express';
+import { schema } from './graphql/schema';
+import { pubsub } from './graphql/resolvers';
+import { WebSocketServer } from 'ws';
+// @ts-ignore - graphql-ws types issue
+const { useServer: useGraphQLWsServer } = require('graphql-ws/lib/use/ws');
+
+// Services
 import { databaseMonitoringService } from './services/monitoring/databaseMonitoringService';
-import { sessionService } from './services/auth/sessionService';
-import { queueService } from './services/queue/queueService';
 import { advancedCacheService } from './services/cache/advancedCacheService';
 import securityMonitoringService from './services/security/securityMonitoringService';
 import secretsManagementService from './services/security/secretsManagementService';
 import anomalyDetectionService from './services/security/anomalyDetectionService';
-
-dotenv.config();
+import websocketService from './services/websocket/websocketService';
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = env.PORT;
 
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 
 // ============================================
-// ULTIMATE SECURITY MIDDLEWARE STACK
+// SECURITY MIDDLEWARE STACK
 // ============================================
 
-// 1. Security headers (должны быть первыми)
-app.use(securityHeadersMiddleware);
+app.use(securityMiddleware.securityHeaders);
+app.use(securityMiddleware.csp);
 
-// 2. CSP middleware
-app.use(cspMiddleware);
+// HTTPS enforcement in production
+if (env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    next();
+  });
+}
 
-// 3. CORS configuration with credentials
+// CORS configuration
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'https://smartprice-frontend-production.up.railway.app'
+  env.FRONTEND_URL,
+  ...(env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : [])
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Разрешаем запросы без origin (например, Postman, curl)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true); // Временно разрешаем все origins для отладки
+      logger.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response'],
+  maxAge: 86400,
 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
-// 4. DDoS Protection (критично для защиты от атак)
+// Request ID tracking
+app.use(requestIdMiddleware);
+
+// HTTP Caching
+app.use(cachingMiddleware);
+
+// DDoS Protection
 app.use(ddosProtection);
 
-// 5. Geo-blocking (опционально)
-if (process.env.ENABLE_GEO_BLOCKING === 'true') {
+if (env.ENABLE_GEO_BLOCKING) {
   app.use(geoBlocking);
 }
 
-// 6. WAF - Web Application Firewall
+// WAF
 app.use(wafMiddleware.middleware());
 
-// 7. Input Validation & Sanitization
-app.use(inputValidation);
+// Input Validation & Security
+app.use(securityMiddleware.inputValidation);
+app.use(securityMiddleware.botDetection);
+app.use(securityMiddleware.threatScoreCheck);
+app.use(securityMiddleware.csrfProtection);
 
-// 8. Bot Detection
-app.use(botDetection);
-
-// 9. Threat Score Check
-app.use(threatScoreCheck);
-
-// 10. Existing security middleware
-app.use(suspiciousPatternMiddleware);
-app.use(csrfProtectionMiddleware);
-
-// IP-based rate limiting (глобальный)
-if (process.env.NODE_ENV === 'production') {
-  app.use(ipRateLimitMiddleware);
+// IP-based rate limiting
+if (env.NODE_ENV === 'production') {
+  app.use(securityMiddleware.ipRateLimit);
 }
 
-// Metrics middleware (должен быть до роутов)
+// Metrics middleware
 app.use(metricsMiddleware);
 
-// Session configuration with Redis store
+// Session configuration
 app.use(session({
   store: new RedisStore({ client: redisClient }),
-  secret: process.env.SESSION_SECRET || 'fallback-session-secret',
+  secret: env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    maxAge: SECURITY.SESSION_MAX_AGE,
+    sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
   },
 }));
 
-// Rate limiting - общий
+// Rate limiting
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: RATE_LIMITS.API.windowMs,
+  max: RATE_LIMITS.API.max,
   message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
-    res.status(429).json({ error: 'Too many requests from this IP, please try again later.' });
-  },
 });
 
-// Rate limiting - строгий для авторизации
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // только 5 попыток входа за 15 минут
+  windowMs: RATE_LIMITS.AUTH.windowMs,
+  max: RATE_LIMITS.AUTH.max,
   message: { error: 'Too many login attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true, // не считаем успешные попытки
-  handler: (req, res) => {
-    res.status(429).json({ error: 'Too many login attempts, please try again later.' });
-  },
+  skipSuccessfulRequests: true,
 });
 
-// Rate limiting для suggestions (автодополнение)
 const suggestionsLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 30, // 30 запросов в минуту
+  windowMs: RATE_LIMITS.SUGGESTIONS.windowMs,
+  max: RATE_LIMITS.SUGGESTIONS.max,
   message: { error: 'Too many suggestion requests, please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
-    res.status(429).json({ error: 'Too many suggestion requests, please slow down.' });
-  },
+});
+
+const emailVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // 3 attempts per 15 minutes
+  message: { error: 'Too many verification attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many password reset attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const compareLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many comparison requests, please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use('/api/', generalLimiter);
+
+// ============================================
+// ROUTES
+// ============================================
 
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
     name: 'SmartPrice API',
-    version: '1.0.0',
+    version: '2.0.0',
     status: 'running',
     endpoints: {
       health: '/health',
-      api: '/api/*',
+      api: '/api/v1/*',
+      docs: '/api-docs',
       metrics: '/metrics'
     }
   });
 });
 
-// Health check with dependencies
-app.get('/health', async (req, res) => {
-  const health = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    services: {
-      database: 'unknown',
-      redis: 'unknown',
-    },
-  };
+// Health checks (no auth required)
+app.use('/health', healthRoutes);
 
-  try {
-    const db = (await import('./config/database')).default;
-    await db.query('SELECT 1');
-    health.services.database = 'ok';
-  } catch (e) {
-    health.services.database = 'error';
-    health.status = 'degraded';
-    console.error('❌ Database health check failed:', e);
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'SmartPrice API Documentation',
+  customfavIcon: '/favicon.ico',
+}));
+
+// GraphQL API
+app.all('/graphql', (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    try {
+      const decoded = require('jsonwebtoken').verify(token, env.JWT_SECRET) as any;
+      (req as any).userId = decoded.userId;
+    } catch (error) {
+      // Invalid token, continue without userId
+    }
   }
+  next();
+}, createHandler({
+  schema,
+  context: (req) => ({ userId: (req.raw as any).userId }),
+}));
 
-  try {
-    await redisClient.ping();
-    health.services.redis = 'ok';
-  } catch (e) {
-    health.services.redis = 'error';
-    health.status = 'degraded';
-    console.error('❌ Redis health check failed:', e);
+// API v1 Router
+const v1Router = express.Router();
+
+v1Router.use('/search', securityMiddleware.endpointRateLimit('SEARCH'), searchRoutes);
+v1Router.use('/auth', authLimiter, securityMiddleware.credentialStuffingDetection, authRoutes);
+v1Router.use('/auth/forgot-password', passwordResetLimiter);
+v1Router.use('/auth/reset-password', passwordResetLimiter);
+v1Router.use('/email-verification', emailVerificationLimiter, emailVerificationRoutes);
+v1Router.use('/sessions', securityMiddleware.anomalyDetection, sessionsRoutes);
+v1Router.use('/api-keys', apiKeysRoutes);
+v1Router.use('/admin', adminRoutes);
+v1Router.use('/security', securityRoutes);
+v1Router.use('/owner', ownerRoutes);
+v1Router.use('/favorites', securityMiddleware.anomalyDetection, favoritesRoutes);
+v1Router.use('/price-tracking', priceTrackingRoutes);
+v1Router.use('/analytics', analyticsRoutes);
+v1Router.use('/suggestions', suggestionsLimiter, suggestionsRoutes);
+v1Router.use('/price-history', priceHistoryRoutes);
+v1Router.use('/compare', compareLimiter, compareRoutes);
+
+app.use('/api/v1', v1Router);
+
+// Backward compatibility redirect
+app.use('/api', (req, res, next) => {
+  if (!req.path.startsWith('/v1')) {
+    const newPath = `/api/v1${req.path}`;
+    logger.info(`Redirecting ${req.path} to ${newPath}`);
+    return res.redirect(301, newPath);
   }
-
-  const statusCode = health.status === 'ok' ? 200 : 503;
-  res.status(statusCode).json(health);
+  next();
 });
 
-// API routes
-app.use('/api/search', advancedRateLimitMiddleware('search'), searchRoutes);
-app.use('/api/auth', authLimiter, credentialStuffingDetection, authRoutes);
-app.use('/api/email-verification', emailVerificationRoutes);
-app.use('/api/sessions', anomalyDetection, accountTakeoverDetection, sessionsRoutes);
-app.use('/api/api-keys', apiKeysRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/security', securityRoutes); // NEW: Ultimate Security Routes
-app.use('/api/favorites', anomalyDetection, favoritesRoutes);
-app.use('/api/price-tracking', priceTrackingRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/suggestions', suggestionsLimiter, suggestionsRoutes);
-app.use('/api/price-history', priceHistoryRoutes);
-app.use('/api/compare', compareRoutes);
 app.use('/metrics', metricsRoutes);
 
 // CSP violation report endpoint
-app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), cspReportHandler);
+app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), securityMiddleware.cspReportHandler);
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
+  res.status(HTTP_STATUS.NOT_FOUND).json({ 
+    error: 'Endpoint not found',
+    code: 'NOT_FOUND',
+  });
 });
 
 // Error metrics middleware
@@ -263,187 +302,195 @@ app.use(errorMetricsMiddleware);
 
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('❌ Unhandled error:', err);
-  
-  const statusCode = err.statusCode || 500;
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'Internal server error' 
-    : err.message;
-
-  res.status(statusCode).json({ 
-    error: message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
-  });
+  handleError(err, res);
 });
+
+// ============================================
+// SERVER STARTUP
+// ============================================
 
 async function startServer() {
   try {
-    // Подключаемся к Redis (критично для работы)
+    logger.info('='.repeat(60));
+    logger.info('SmartPrice Backend - Production Ready Edition');
+    logger.info('='.repeat(60));
+
+    // Connect to Redis
     await connectRedis();
-    console.log('✅ Redis connected');
+    logger.info('Redis connected');
 
-    // Проверяем подключение к БД
-    const db = (await import('./config/database')).default;
-    await db.query('SELECT 1');
-    console.log('✅ Database connected');
+    // Check database
+    const dbHealthy = await checkDatabaseHealth();
+    if (!dbHealthy) {
+      throw new Error('Database connection failed');
+    }
+    logger.info('Database connected');
 
-    // Инициализируем схему БД (если еще не создана)
+    // Initialize database schema
     await initializeDatabase();
 
-    // Включаем pg_stat_statements для мониторинга
+    // Enable pg_stat_statements
     await databaseMonitoringService.enableStatements();
 
-    // ============================================
-    // ULTIMATE SECURITY INITIALIZATION
-    // ============================================
-
-    // Инициализация Secrets Management
+    // Initialize Secrets Management
     await secretsManagementService.initialize();
-    console.log('🔐 Secrets Management initialized');
+    logger.info('Secrets Management initialized');
 
-    // Запуск Security Monitoring Service
+    // Start Security Monitoring
     securityMonitoringService.startMonitoring();
-    console.log('🔒 Security Monitoring started');
+    logger.info('Security Monitoring started');
 
-    // Построение профилей пользователей для anomaly detection (фоновая задача)
+    // Start Maintenance Jobs
+    maintenanceJob.start();
+    securityCleanupJob.start(24); // Каждые 24 часа
+    logger.info('Maintenance & Security Cleanup Jobs started');
+
+    // Build user behavior profiles (background)
     setTimeout(async () => {
-      console.log('🤖 Building user behavior profiles...');
+      logger.info('Building user behavior profiles...');
       await anomalyDetectionService.updateAllProfiles();
-      console.log('✅ User behavior profiles updated');
-    }, 60000); // Через 1 минуту после запуска
+      logger.info('User behavior profiles updated');
+    }, 60000);
 
-    // Cache warming - предзагрузка популярных данных
+    // Cache warming
     await advancedCacheService.warmCache(async () => {
-      console.log('🔥 Cache warming started...');
-      // Здесь можно добавить предзагрузку популярных данных
+      logger.info('Cache warming started...');
     });
 
-    // Запускаем background jobs
-    priceCheckJob.start(60); // Проверка цен каждый час
-    priceHistoryJob.start(24); // Сбор истории раз в сутки
+    // Start background jobs
+    priceCheckJob.start(60);
+    priceHistoryJob.start(24);
     
-    // Периодическая очистка старых метрик
-    setInterval(() => {
-      metricsService.cleanup();
-    }, 60 * 60 * 1000); // Каждый час
-
-    // Периодическая очистка истекших сессий
-    setInterval(async () => {
-      await sessionService.cleanupExpiredSessions();
-    }, 60 * 60 * 1000); // Каждый час
-
-    // Периодическая очистка очередей
-    setInterval(async () => {
-      await queueService.cleanQueues();
-    }, 24 * 60 * 60 * 1000); // Раз в сутки
-
-    // Периодическое обновление профилей пользователей
-    setInterval(async () => {
-      await anomalyDetectionService.updateAllProfiles();
-    }, 24 * 60 * 60 * 1000); // Раз в сутки
-
-    // Периодическая проверка необходимости ротации секретов
-    setInterval(async () => {
-      const needsRotation = await secretsManagementService.checkRotationNeeded('jwt_secret');
-      if (needsRotation) {
-        console.log('⚠️  JWT secret rotation needed!');
-      }
-    }, 7 * 24 * 60 * 60 * 1000); // Раз в неделю
-    
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log('\n' + '='.repeat(60));
-      console.log('🚀 SmartPrice Backend - ULTIMATE SECURITY EDITION');
-      console.log('='.repeat(60));
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`📊 Health check: /health`);
-      console.log(`📈 Metrics: /metrics`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log('\n🔒 SECURITY FEATURES:');
-      console.log('  ✓ 2FA/MFA Authentication');
-      console.log('  ✓ Intrusion Prevention System (IPS)');
-      console.log('  ✓ Web Application Firewall (WAF)');
-      console.log('  ✓ DDoS Protection');
-      console.log('  ✓ Anomaly Detection (ML-based)');
-      console.log('  ✓ Vulnerability Scanner');
-      console.log('  ✓ Security Monitoring & Alerting');
-      console.log('  ✓ Secrets Management & Rotation');
-      console.log('  ✓ Advanced Rate Limiting');
-      console.log('  ✓ Bot Detection');
-      console.log('  ✓ Credential Stuffing Protection');
-      console.log('  ✓ Account Takeover Detection');
-      console.log('  ✓ Geo-blocking Support');
-      console.log('\n⚡ PERFORMANCE FEATURES:');
-      console.log('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
-      console.log('  ✓ Database Query Optimization');
-      console.log('  ✓ Connection Pooling');
-      console.log('  ✓ Async Processing (Bull Queues)');
-      console.log('  ✓ CDN Ready');
-      console.log('  ✓ HTTP/2 Support');
-      console.log('\n📧 Queue service initialized');
-      console.log('='.repeat(60) + '\n');
+    const server = app.listen(PORT, () => {
+      logger.info('='.repeat(60));
+      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Health check: /health`);
+      logger.info(`Metrics: /metrics`);
+      logger.info(`API Docs: /api-docs`);
+      logger.info(`GraphQL: /graphql`);
+      logger.info(`Environment: ${env.NODE_ENV}`);
+      logger.info('SECURITY FEATURES:');
+      logger.info('  ✓ Refresh Token Authentication');
+      logger.info('  ✓ Role-Based Access Control');
+      logger.info('  ✓ 2FA/MFA Authentication');
+      logger.info('  ✓ Intrusion Prevention System (IPS)');
+      logger.info('  ✓ Web Application Firewall (WAF)');
+      logger.info('  ✓ DDoS Protection');
+      logger.info('  ✓ Anomaly Detection (ML-based)');
+      logger.info('  ✓ Vulnerability Scanner');
+      logger.info('  ✓ Security Monitoring & Alerting');
+      logger.info('  ✓ Secrets Management & Rotation');
+      logger.info('  ✓ Bot Detection');
+      logger.info('  ✓ Credential Stuffing Protection');
+      logger.info('  ✓ Account Takeover Detection');
+      logger.info('PERFORMANCE FEATURES:');
+      logger.info('  ✓ Advanced Caching (L1 Memory + L2 Redis)');
+      logger.info('  ✓ Database Query Optimization');
+      logger.info('  ✓ Connection Pooling');
+      logger.info('  ✓ Async Processing (Bull Queues)');
+      logger.info('  ✓ Graceful Degradation');
+      logger.info('  ✓ Circuit Breaker Pattern');
+      logger.info('RELIABILITY FEATURES:');
+      logger.info('  ✓ Health Checks (liveness & readiness)');
+      logger.info('  ✓ Automatic Maintenance Jobs');
+      logger.info('  ✓ Error Standardization');
+      logger.info('  ✓ Comprehensive Logging');
+      logger.info('  ✓ WebSocket Real-time Updates');
+      logger.info('  ✓ GraphQL API with Subscriptions');
+      logger.info('='.repeat(60));
     });
+    
+    // Initialize WebSocket for Socket.IO
+    websocketService.initialize(server);
+    websocketService.setPubSub(pubsub);
+    
+    // Initialize GraphQL WebSocket Server
+    const wsServer = new WebSocketServer({
+      server,
+      path: '/graphql',
+    });
+
+    useGraphQLWsServer({
+      schema,
+      context: async (ctx: any) => {
+        const token = ctx.connectionParams?.authorization?.split(' ')[1];
+        if (token) {
+          try {
+            const decoded = require('jsonwebtoken').verify(token, env.JWT_SECRET) as any;
+            return { userId: decoded.userId };
+          } catch (error) {
+            return {};
+          }
+        }
+        return {};
+      },
+    }, wsServer);
+
+    logger.info('GraphQL WebSocket server initialized');
     
     server.on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use`);
+        logger.error(`Port ${PORT} is already in use`);
       } else {
-        console.error('❌ Server error:', error);
+        logger.error('Server error:', error);
       }
       process.exit(1);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('⚠️ SIGTERM received, shutting down gracefully...');
+// Graceful shutdown с таймаутом
+const SHUTDOWN_TIMEOUT = 30000; // 30 секунд
+
+async function gracefulShutdown(signal: string) {
+  logger.warn(`${signal} received, shutting down gracefully...`);
   
-  priceCheckJob.stop();
-  priceHistoryJob.stop();
-  securityMonitoringService.stopMonitoring();
-  
+  const shutdownTimer = setTimeout(() => {
+    logger.error('Graceful shutdown timeout, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
   try {
-    await queueService.close();
-    console.log('✅ Queue service closed');
-  } catch (err) {
-    console.error('❌ Error closing queue service:', err);
-  }
-  
-  try {
+    // Останавливаем jobs
+    priceCheckJob.stop();
+    priceHistoryJob.stop();
+    maintenanceJob.stop();
+    securityCleanupJob.stop();
+    securityMonitoringService.stopMonitoring();
+    
+    // Закрываем Redis
     await redisClient.quit();
-    console.log('✅ Redis connection closed');
+    logger.info('Redis connection closed');
+    
+    // Закрываем database pool
+    await pool.end();
+    logger.info('Database pool closed');
+    
+    clearTimeout(shutdownTimer);
+    logger.info('Graceful shutdown completed');
+    process.exit(0);
   } catch (err) {
-    console.error('❌ Error closing Redis:', err);
+    logger.error('Error during shutdown:', err);
+    clearTimeout(shutdownTimer);
+    process.exit(1);
   }
-  
-  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Обработка необработанных ошибок
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', { promise, reason });
+  // Не завершаем процесс, но логируем
 });
 
-process.on('SIGINT', async () => {
-  console.log('⚠️ SIGINT received, shutting down gracefully...');
-  
-  priceCheckJob.stop();
-  priceHistoryJob.stop();
-  securityMonitoringService.stopMonitoring();
-  
-  try {
-    await queueService.close();
-    console.log('✅ Queue service closed');
-  } catch (err) {
-    console.error('❌ Error closing queue service:', err);
-  }
-  
-  try {
-    await redisClient.quit();
-    console.log('✅ Redis connection closed');
-  } catch (err) {
-    console.error('❌ Error closing Redis:', err);
-  }
-  
-  process.exit(0);
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
 startServer();

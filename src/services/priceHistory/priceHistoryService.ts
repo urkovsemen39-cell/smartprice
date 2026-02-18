@@ -1,4 +1,5 @@
 import db from '../../config/database';
+import logger from '../../utils/logger';
 
 export interface PriceHistoryEntry {
   id: number;
@@ -16,7 +17,7 @@ export class PriceHistoryService {
         [productId, marketplace, price]
       );
     } catch (error) {
-      console.error('❌ Record price error:', error);
+      logger.error('Record price error:', error);
       throw error;
     }
   }
@@ -37,7 +38,7 @@ export class PriceHistoryService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Get price history error:', error);
+      logger.error('Get price history error:', error);
       throw error;
     }
   }
@@ -53,7 +54,7 @@ export class PriceHistoryService {
 
       return result.rows.length > 0 ? Number(result.rows[0].price) : null;
     } catch (error) {
-      console.error('❌ Get latest price error:', error);
+      logger.error('Get latest price error:', error);
       return null;
     }
   }
@@ -67,7 +68,7 @@ export class PriceHistoryService {
 
       return result.rowCount || 0;
     } catch (error) {
-      console.error('❌ Clean old history error:', error);
+      logger.error('Clean old history error:', error);
       return 0;
     }
   }

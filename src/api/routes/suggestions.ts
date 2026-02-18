@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import cacheService from '../../services/cache/cacheService';
+import { advancedCacheService } from '../../services/cache/advancedCacheService';
 import analyticsService from '../../services/analytics/analyticsService';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Query is too long (max 200 characters)' });
     }
 
-    const cached = await cacheService.getCachedSuggestions(query);
+    const cached = await advancedCacheService.getCachedSuggestions(query);
     if (cached) {
       return res.json({ suggestions: cached });
     }
@@ -26,11 +27,11 @@ router.get('/', async (req: Request, res: Response) => {
       .filter(q => q.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 10);
 
-    await cacheService.cacheSuggestions(query, suggestions);
+    await advancedCacheService.cacheSuggestions(query, suggestions);
 
     res.json({ suggestions });
   } catch (error) {
-    console.error('❌ Suggestions error:', error);
+    logger.error('❌ Suggestions error:', error);
     res.status(500).json({ error: 'Failed to get suggestions' });
   }
 });

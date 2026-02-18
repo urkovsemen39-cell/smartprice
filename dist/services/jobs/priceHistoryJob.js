@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceHistoryJob = void 0;
 const priceHistoryService_1 = __importDefault(require("../priceHistory/priceHistoryService"));
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class PriceHistoryJob {
     constructor() {
         this.isRunning = false;
@@ -13,10 +14,10 @@ class PriceHistoryJob {
     }
     start(intervalHours = 24) {
         if (this.intervalId) {
-            console.log('⚠️ Price history job already running');
+            logger_1.default.warn('Price history job already running');
             return;
         }
-        console.log(`✅ Starting price history collection job (every ${intervalHours} hours)`);
+        logger_1.default.info(`Starting price history collection job (every ${intervalHours} hours)`);
         // Запускаем сразу
         this.collectPriceHistory();
         // И затем по расписанию
@@ -28,16 +29,16 @@ class PriceHistoryJob {
         if (this.intervalId) {
             clearInterval(this.intervalId);
             this.intervalId = null;
-            console.log('✅ Price history job stopped');
+            logger_1.default.info('Price history job stopped');
         }
     }
     async collectPriceHistory() {
         if (this.isRunning) {
-            console.log('⚠️ Price history collection already in progress, skipping...');
+            logger_1.default.warn('Price history collection already in progress, skipping...');
             return;
         }
         this.isRunning = true;
-        console.log('📊 Starting price history collection...');
+        logger_1.default.info('Starting price history collection...');
         try {
             // Получаем все уникальные товары из отслеживания цен
             const result = await database_1.default.query(`
@@ -46,7 +47,7 @@ class PriceHistoryJob {
         WHERE active = true
       `);
             const products = result.rows;
-            console.log(`📦 Collecting history for ${products.length} products`);
+            logger_1.default.info(`Collecting history for ${products.length} products`);
             let collectedCount = 0;
             for (const product of products) {
                 try {
@@ -65,18 +66,18 @@ class PriceHistoryJob {
                     collectedCount++;
                 }
                 catch (error) {
-                    console.error(`❌ Error collecting history for ${product.product_id}:`, error);
+                    logger_1.default.error(`Error collecting history for ${product.product_id}:`, error);
                 }
             }
-            console.log(`✅ Price history collection completed. Collected: ${collectedCount}`);
+            logger_1.default.info(`Price history collection completed. Collected: ${collectedCount}`);
             // Очистка старых записей (старше 1 года)
             const deletedCount = await priceHistoryService_1.default.cleanOldHistory(365);
             if (deletedCount > 0) {
-                console.log(`🗑️ Cleaned ${deletedCount} old price history records`);
+                logger_1.default.info(`Cleaned ${deletedCount} old price history records`);
             }
         }
         catch (error) {
-            console.error('❌ Price history collection error:', error);
+            logger_1.default.error('Price history collection error:', error);
         }
         finally {
             this.isRunning = false;

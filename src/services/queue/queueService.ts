@@ -1,6 +1,6 @@
 import Bull, { Queue, Job } from 'bull';
 import { emailService } from '../email/emailService';
-import { auditService } from '../audit/auditService';
+import logger from '../../utils/logger';
 
 // Типы задач
 interface EmailJob {
@@ -39,13 +39,13 @@ class QueueService {
     // Настройка обработчиков
     this.setupProcessors();
 
-    console.log('✅ Queue service initialized');
+    logger.info('Queue service initialized');
   }
 
   private setupProcessors() {
     // Email обработчик
     this.emailQueue.process(async (job: Job<EmailJob>) => {
-      console.log(`📧 Processing email job: ${job.data.type}`);
+      logger.info(`Processing email job: ${job.data.type}`);
       
       try {
         switch (job.data.type) {
@@ -73,53 +73,53 @@ class QueueService {
             break;
         }
         
-        console.log(`✅ Email job completed: ${job.data.type}`);
+        logger.info(`Email job completed: ${job.data.type}`);
       } catch (error) {
-        console.error(`❌ Email job failed: ${job.data.type}`, error);
+        logger.error(`Email job failed: ${job.data.type}`, error);
         throw error; // Для retry
       }
     });
 
     // Analytics обработчик
     this.analyticsQueue.process(async (job: Job<AnalyticsJob>) => {
-      console.log(`📊 Processing analytics job: ${job.data.type}`);
+      logger.info(`Processing analytics job: ${job.data.type}`);
       
       try {
         // Здесь можно добавить обработку аналитики
         // Например, агрегация данных, отправка в внешние системы и т.д.
         
-        console.log(`✅ Analytics job completed: ${job.data.type}`);
+        logger.info(`Analytics job completed: ${job.data.type}`);
       } catch (error) {
-        console.error(`❌ Analytics job failed: ${job.data.type}`, error);
+        logger.error(`Analytics job failed: ${job.data.type}`, error);
         throw error;
       }
     });
 
     // Report обработчик
     this.reportQueue.process(async (job: Job<ReportJob>) => {
-      console.log(`📄 Processing report job: ${job.data.reportType}`);
+      logger.info(`Processing report job: ${job.data.reportType}`);
       
       try {
         // Здесь можно добавить генерацию отчетов
         
-        console.log(`✅ Report job completed: ${job.data.reportType}`);
+        logger.info(`Report job completed: ${job.data.reportType}`);
       } catch (error) {
-        console.error(`❌ Report job failed: ${job.data.reportType}`, error);
+        logger.error(`Report job failed: ${job.data.reportType}`, error);
         throw error;
       }
     });
 
     // Обработка ошибок
     this.emailQueue.on('failed', (job, err) => {
-      console.error(`❌ Email job ${job.id} failed:`, err.message);
+      logger.error(`Email job ${job.id} failed:`, err.message);
     });
 
     this.analyticsQueue.on('failed', (job, err) => {
-      console.error(`❌ Analytics job ${job.id} failed:`, err.message);
+      logger.error(`Analytics job ${job.id} failed:`, err.message);
     });
 
     this.reportQueue.on('failed', (job, err) => {
-      console.error(`❌ Report job ${job.id} failed:`, err.message);
+      logger.error(`Report job ${job.id} failed:`, err.message);
     });
   }
 
@@ -192,7 +192,7 @@ class QueueService {
     await this.analyticsQueue.clean(24 * 60 * 60 * 1000);
     await this.reportQueue.clean(7 * 24 * 60 * 60 * 1000); // 7 дней
     
-    console.log('✅ Queues cleaned');
+    logger.info('Queues cleaned');
   }
 
   // Graceful shutdown
@@ -201,7 +201,7 @@ class QueueService {
     await this.analyticsQueue.close();
     await this.reportQueue.close();
     
-    console.log('✅ Queue service closed');
+    logger.info('Queue service closed');
   }
 }
 

@@ -2,6 +2,7 @@ import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { pool } from '../../config/database';
 import crypto from 'crypto';
+import env from '../../config/env';
 
 interface TwoFactorSetup {
   secret: string;
@@ -17,6 +18,52 @@ interface TwoFactorSettings {
 }
 
 class TwoFactorAuthService {
+  private readonly ENCRYPTION_KEY: Buffer;
+  private readonly ALGORITHM = 'aes-256-gcm';
+
+  constructor() {
+    // Используем JWT_SECRET как основу для ключа шифрования
+    const secret = env.JWT_SECRET || 'fallback-secret-key-for-encryption';
+    this.ENCRYPTION_KEY = crypto.scryptSync(secret, 'salt', 32);
+  }
+
+  /**
+   * Шифрование данных
+   */
+  private encrypt(text: string): string {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(this.ALGORITHM, this.ENCRYPTION_KEY, iv);
+    
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const authTag = cipher.getAuthTag();
+    
+    // Возвращаем: iv:authTag:encrypted
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  }
+
+  /**
+   * Расшифровка данных
+   */
+  private decrypt(encryptedData: string): string {
+    const parts = encryptedData.split(':');
+    if (parts.length !== 3) {
+      throw new Error('Invalid encrypted data format');
+    }
+
+    const iv = Buffer.from(parts[0], 'hex');
+    const authTag = Buffer.from(parts[1], 'hex');
+    const encrypted = parts[2];
+
+    const decipher = crypto.createDecipheriv(this.ALGORITHM, this.ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  }
   /**
    * Генерация секрета и QR кода для настройки 2FA
    */
@@ -29,6 +76,9 @@ class TwoFactorAuthService {
 
     // Генерация backup кодов
     const backupCodes = this.generateBackupCodes(8);
+    
+    // Шифруем backup коды перед сохранением
+    const encryptedBackupCodes = this.encrypt(JSON.stringify(backupCodes));
 
     // Генерация QR кода
     const qrCode = await QRCode.toDataURL(secret.otpauth_url!);
@@ -39,7 +89,7 @@ class TwoFactorAuthService {
        VALUES ($1, $2, false, $3, NOW())
        ON CONFLICT (user_id) 
        DO UPDATE SET secret = $2, backup_codes = $3, updated_at = NOW()`,
-      [userId, secret.base32, JSON.stringify(backupCodes)]
+      [userId, secret.base32, encryptedBackupCodes]
     );
 
     return {
@@ -139,7 +189,9 @@ class TwoFactorAuthService {
       return false;
     }
 
-    const backupCodes: string[] = JSON.parse(result.rows[0].backup_codes);
+    // Расшифровываем backup коды
+    const encryptedBackupCodes = result.rows[0].backup_codes;
+    const backupCodes: string[] = JSON.parse(this.decrypt(encryptedBackupCodes));
     const codeIndex = backupCodes.indexOf(code);
 
     if (codeIndex === -1) {
@@ -148,9 +200,13 @@ class TwoFactorAuthService {
 
     // Удаляем использованный код
     backupCodes.splice(codeIndex, 1);
+    
+    // Шифруем обновленный список
+    const updatedEncryptedCodes = this.encrypt(JSON.stringify(backupCodes));
+    
     await pool.query(
       'UPDATE user_2fa_settings SET backup_codes = $1, updated_at = NOW() WHERE user_id = $2',
-      [JSON.stringify(backupCodes), userId]
+      [updatedEncryptedCodes, userId]
     );
 
     return true;
@@ -173,10 +229,13 @@ class TwoFactorAuthService {
    */
   async regenerateBackupCodes(userId: number): Promise<string[]> {
     const backupCodes = this.generateBackupCodes(8);
+    
+    // Шифруем backup коды
+    const encryptedBackupCodes = this.encrypt(JSON.stringify(backupCodes));
 
     await pool.query(
       'UPDATE user_2fa_settings SET backup_codes = $1, updated_at = NOW() WHERE user_id = $2',
-      [JSON.stringify(backupCodes), userId]
+      [encryptedBackupCodes, userId]
     );
 
     return backupCodes;

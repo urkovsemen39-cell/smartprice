@@ -1,4 +1,5 @@
 import { Product, SearchFilters } from '../../types';
+import logger from '../../utils/logger';
 
 export class YandexMarketAdapter {
   name = 'Яндекс.Маркет';
@@ -25,7 +26,7 @@ export class YandexMarketAdapter {
       
       return [];
     } catch (error) {
-      console.error(`❌ ${this.name} error:`, error);
+      logger.error(`${this.name} error:`, error);
       return [];
     }
   }

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import ddosProtectionService from '../services/security/ddosProtectionService';
 import intrusionPreventionService from '../services/security/intrusionPreventionService';
+import logger from '../utils/logger';
 
 /**
  * DDoS Protection Middleware
@@ -87,14 +88,11 @@ export const ddosProtection = async (req: Request, res: Response, next: NextFunc
     }
 
     // Adaptive rate limiting
-    const rateLimit = await ddosProtectionService.getAdaptiveRateLimit(ip);
-    
-    // Применение rate limit (упрощенная версия)
     // В production использовать express-rate-limit с Redis store
     
     next();
   } catch (error) {
-    console.error('DDoS protection middleware error:', error);
+    logger.error('DDoS protection middleware error:', error);
     next(); // Не блокируем запрос при ошибке middleware
   }
 };
@@ -121,7 +119,7 @@ export const geoBlocking = async (req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
-    console.error('Geo-blocking middleware error:', error);
+    logger.error('Geo-blocking middleware error:', error);
     next();
   }
 };

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import priceTrackingService from '../../services/priceTracking/priceTrackingService';
 import { authMiddleware, AuthRequest } from '../../middleware/auth';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const result = await priceTrackingService.getAlerts(req.userId!, activeOnly, page, limit);
     res.json(result);
   } catch (error) {
-    console.error('❌ Get alerts error:', error);
+    logger.error('Get alerts error:', error);
     res.status(500).json({ error: 'Failed to get price alerts' });
   }
 });
@@ -53,7 +54,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
     res.json({ alert });
   } catch (error) {
-    console.error('❌ Create alert error:', error);
+    logger.error('Create alert error:', error);
     res.status(500).json({ error: 'Failed to create price alert' });
   }
 });
@@ -69,7 +70,7 @@ router.patch('/:alertId/deactivate', async (req: AuthRequest, res: Response) => 
       res.status(404).json({ error: 'Alert not found' });
     }
   } catch (error) {
-    console.error('❌ Deactivate alert error:', error);
+    logger.error('Deactivate alert error:', error);
     res.status(500).json({ error: 'Failed to deactivate alert' });
   }
 });
@@ -85,7 +86,7 @@ router.delete('/:alertId', async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: 'Alert not found' });
     }
   } catch (error) {
-    console.error('❌ Delete alert error:', error);
+    logger.error('Delete alert error:', error);
     res.status(500).json({ error: 'Failed to delete alert' });
   }
 });

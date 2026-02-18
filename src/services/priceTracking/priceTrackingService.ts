@@ -1,4 +1,5 @@
 import db from '../../config/database';
+import logger from '../../utils/logger';
 
 export interface PriceAlert {
   id: number;
@@ -58,7 +59,7 @@ export class PriceTrackingService {
 
       return result.rows[0];
     } catch (error) {
-      console.error('❌ Create alert error:', error);
+      logger.error('Create alert error:', error);
       throw error;
     }
   }
@@ -97,7 +98,7 @@ export class PriceTrackingService {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      console.error('❌ Get alerts error:', error);
+      logger.error('Get alerts error:', error);
       throw error;
     }
   }
@@ -109,7 +110,7 @@ export class PriceTrackingService {
         [newPrice, alertId]
       );
     } catch (error) {
-      console.error('❌ Update price error:', error);
+      logger.error('Update price error:', error);
       throw error;
     }
   }
@@ -136,7 +137,7 @@ export class PriceTrackingService {
 
       return false;
     } catch (error) {
-      console.error('❌ Check and notify error:', error);
+      logger.error('Check and notify error:', error);
       return false;
     }
   }
@@ -150,7 +151,7 @@ export class PriceTrackingService {
 
       return result.rowCount! > 0;
     } catch (error) {
-      console.error('❌ Deactivate alert error:', error);
+      logger.error('Deactivate alert error:', error);
       throw error;
     }
   }
@@ -164,7 +165,7 @@ export class PriceTrackingService {
 
       return result.rowCount! > 0;
     } catch (error) {
-      console.error('❌ Delete alert error:', error);
+      logger.error('Delete alert error:', error);
       throw error;
     }
   }
@@ -179,7 +180,7 @@ export class PriceTrackingService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Get alerts to check error:', error);
+      logger.error('Get alerts to check error:', error);
       return [];
     }
   }

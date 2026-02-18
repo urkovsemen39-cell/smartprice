@@ -18,8 +18,8 @@ interface RateLimitConfig {
 
 class DDoSProtectionService {
   private readonly WINDOW_SIZE = 60; // 60 секунд
-  private readonly SUSPICIOUS_THRESHOLD = 1000; // запросов в минуту с одного IP (увеличено с 100)
-  private readonly GLOBAL_THRESHOLD = 50000; // общих запросов в минуту (увеличено с 10000)
+  private readonly SUSPICIOUS_THRESHOLD = 1000; // запросов в минуту с одного IP
+  private readonly GLOBAL_THRESHOLD = 50000; // общих запросов в минуту
 
   /**
    * Проверка на DDoS атаку
@@ -230,7 +230,7 @@ class DDoSProtectionService {
    */
   private async recordDDoSAttempt(ip: string, type: string, requestCount: number): Promise<void> {
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'ddos_attempt',
       resourceType: 'security',
       details: { ip, type, requestCount, timestamp: new Date() }
@@ -326,7 +326,7 @@ class DDoSProtectionService {
     await redisClient.set('ddos:emergency_mode', '1', { EX: 3600 });
     
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'emergency_mode_enabled',
       resourceType: 'security',
       details: { reason: 'critical_ddos_threat', timestamp: new Date() }
@@ -364,7 +364,7 @@ class DDoSProtectionService {
     await redisClient.setEx(key, duration, '1');
 
     await auditService.log({
-      userId: null,
+      userId: undefined,
       action: 'country_blocked',
       resourceType: 'security',
       details: { countryCode, duration }

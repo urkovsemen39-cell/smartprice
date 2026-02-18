@@ -8,6 +8,7 @@ const priceTrackingService_1 = __importDefault(require("../priceTracking/priceTr
 const priceHistoryService_1 = __importDefault(require("../priceHistory/priceHistoryService"));
 const emailService_1 = __importDefault(require("../email/emailService"));
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class PriceCheckJob {
     constructor() {
         this.isRunning = false;
@@ -15,10 +16,10 @@ class PriceCheckJob {
     }
     start(intervalMinutes = 60) {
         if (this.intervalId) {
-            console.log('⚠️ Price check job already running');
+            logger_1.default.warn('Price check job already running');
             return;
         }
-        console.log(`✅ Starting price check job (every ${intervalMinutes} minutes)`);
+        logger_1.default.info(`Starting price check job (every ${intervalMinutes} minutes)`);
         // Запускаем сразу
         this.checkPrices();
         // И затем по расписанию
@@ -30,19 +31,19 @@ class PriceCheckJob {
         if (this.intervalId) {
             clearInterval(this.intervalId);
             this.intervalId = null;
-            console.log('✅ Price check job stopped');
+            logger_1.default.info('Price check job stopped');
         }
     }
     async checkPrices() {
         if (this.isRunning) {
-            console.log('⚠️ Price check already in progress, skipping...');
+            logger_1.default.warn('Price check already in progress, skipping...');
             return;
         }
         this.isRunning = true;
-        console.log('🔍 Starting price check...');
+        logger_1.default.info('Starting price check...');
         try {
             const alerts = await priceTrackingService_1.default.getAlertsToCheck();
-            console.log(`📊 Checking ${alerts.length} price alerts`);
+            logger_1.default.info(`Checking ${alerts.length} price alerts`);
             let notifiedCount = 0;
             let updatedCount = 0;
             for (const alert of alerts) {
@@ -83,22 +84,22 @@ class PriceCheckJob {
                                 // Помечаем как уведомленное
                                 await priceTrackingService_1.default.checkAndNotify(alert.id);
                                 notifiedCount++;
-                                console.log(`✅ Notified ${name || email} about ${alert.product_name}`);
+                                logger_1.default.info(`Notified ${name || email} about ${alert.product_name}`);
                             }
                             else {
-                                console.warn(`⚠️ Failed to send email to ${email}`);
+                                logger_1.default.warn(`Failed to send email to ${email}`);
                             }
                         }
                     }
                 }
                 catch (error) {
-                    console.error(`❌ Error checking alert ${alert.id}:`, error);
+                    logger_1.default.error(`Error checking alert ${alert.id}:`, error);
                 }
             }
-            console.log(`✅ Price check completed. Updated: ${updatedCount}, Notified: ${notifiedCount}`);
+            logger_1.default.info(`Price check completed. Updated: ${updatedCount}, Notified: ${notifiedCount}`);
         }
         catch (error) {
-            console.error('❌ Price check job error:', error);
+            logger_1.default.error('Price check job error:', error);
         }
         finally {
             this.isRunning = false;

@@ -45,10 +45,12 @@ class ApiKeyService {
         [userId, keyHash, name, expiresAt]
       );
 
-      console.log(`✅ API key created for user ${userId}`);
+      const logger = require('../../utils/logger').default;
+      logger.info(`API key created for user ${userId}`);
       return { key, id: result.rows[0].id };
     } catch (error) {
-      console.error('❌ Error creating API key:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error creating API key:', error);
       throw error;
     }
   }
@@ -82,20 +84,22 @@ class ApiKeyService {
         keyId: result.rows[0].id,
       };
     } catch (error) {
-      console.error('❌ Error validating API key:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error validating API key:', error);
       return { valid: false };
     }
   }
 
-  // Получение всех ключей пользователя
-  async getUserKeys(userId: number): Promise<ApiKey[]> {
+  // Получение всех ключей пользователя (с пагинацией)
+  async getUserKeys(userId: number, limit: number = 20, offset: number = 0): Promise<ApiKey[]> {
     try {
       const result = await pool.query(
-        `SELECT id, user_id, name, last_used_at, expires_at, is_active, created_at 
+        `SELECT id, user_id, name, last_used_at, expires_at, revoked as is_active, created_at 
          FROM api_keys 
          WHERE user_id = $1 
-         ORDER BY created_at DESC`,
-        [userId]
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [userId, limit, offset]
       );
 
       return result.rows.map(row => ({
@@ -105,12 +109,29 @@ class ApiKeyService {
         name: row.name,
         lastUsedAt: row.last_used_at,
         expiresAt: row.expires_at,
-        isActive: row.is_active,
+        isActive: !row.is_active,
         createdAt: row.created_at,
       }));
     } catch (error) {
-      console.error('❌ Error getting user keys:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting user keys:', error);
       return [];
+    }
+  }
+
+  // Получение количества ключей пользователя
+  async getUserKeysCount(userId: number): Promise<number> {
+    try {
+      const result = await pool.query(
+        `SELECT COUNT(*) as count FROM api_keys WHERE user_id = $1`,
+        [userId]
+      );
+
+      return parseInt(result.rows[0].count);
+    } catch (error) {
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting user keys count:', error);
+      return 0;
     }
   }
 
@@ -124,10 +145,12 @@ class ApiKeyService {
         [keyId, userId]
       );
 
-      console.log(`✅ API key ${keyId} revoked`);
-      return result.rowCount > 0;
+      const logger = require('../../utils/logger').default;
+      logger.info(`API key ${keyId} revoked`);
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
-      console.error('❌ Error revoking API key:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error revoking API key:', error);
       return false;
     }
   }
@@ -148,7 +171,8 @@ class ApiKeyService {
         [keyId, endpoint, method, statusCode, responseTimeMs]
       );
     } catch (error) {
-      console.error('❌ Error logging API key usage:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error logging API key usage:', error);
     }
   }
 
@@ -171,7 +195,8 @@ class ApiKeyService {
 
       return true;
     } catch (error) {
-      console.error('❌ Error checking rate limit:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error checking rate limit:', error);
       return true; // В случае ошибки разрешаем запрос
     }
   }
@@ -192,7 +217,8 @@ class ApiKeyService {
 
       return result.rows[0];
     } catch (error) {
-      console.error('❌ Error getting key stats:', error);
+      const logger = require('../../utils/logger').default;
+      logger.error('Error getting key stats:', error);
       return null;
     }
   }

@@ -1,26 +1,18 @@
+// Расширение типов Express для совместимости с AuthRequest
 import { Request } from 'express';
 
 declare global {
   namespace Express {
+    interface User {
+      id: number;
+      email: string;
+      emailVerified: boolean;
+      role: string;
+    }
+    
     interface Request {
-      user?: {
-        id: number;
-        email: string;
-        role?: string;
-      };
-      anomalyScore?: {
-        score: number;
-        anomalies: string[];
-        risk: string;
-        shouldBlock: boolean;
-      };
-      threatScore?: {
-        score: number;
-        reasons: string[];
-        blocked: boolean;
-      };
+      userId?: number;
+      user?: User;
     }
   }
 }
-
-export {};

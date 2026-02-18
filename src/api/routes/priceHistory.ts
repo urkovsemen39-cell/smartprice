@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import priceHistoryService from '../../services/priceHistory/priceHistoryService';
 import { optionalAuthMiddleware, AuthRequest } from '../../middleware/auth';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/:productId', async (req: AuthRequest, res: Response) => {
     const history = await priceHistoryService.getPriceHistory(productId, marketplace, days);
     res.json({ history });
   } catch (error) {
-    console.error('❌ Get price history error:', error);
+    logger.error('Get price history error:', error);
     res.status(500).json({ error: 'Failed to get price history' });
   }
 });
@@ -45,7 +46,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     await priceHistoryService.recordPrice(productId, marketplace, price);
     res.json({ message: 'Price recorded' });
   } catch (error) {
-    console.error('❌ Record price error:', error);
+    logger.error('Record price error:', error);
     res.status(500).json({ error: 'Failed to record price' });
   }
 });

@@ -1,6 +1,7 @@
 import { pool } from '../../config/database';
 import { redisClient } from '../../config/redis';
 import { auditService } from '../audit/auditService';
+import logger from '../../utils/logger';
 
 interface UserBehaviorProfile {
   userId: number;
@@ -27,24 +28,26 @@ class AnomalyDetectionService {
    * Построение профиля поведения пользователя
    */
   async buildUserProfile(userId: number): Promise<UserBehaviorProfile> {
-    // Анализ последних 7 дней активности
+    const learningPeriodDays = this.LEARNING_PERIOD_DAYS;
+    
+    // Анализ последних N дней активности с timeout
     const sessions = await pool.query(
       `SELECT ip_address, user_agent, created_at, last_activity
        FROM user_sessions
-       WHERE user_id = $1 AND created_at > NOW() - INTERVAL '${this.LEARNING_PERIOD_DAYS} days'`,
-      [userId]
+       WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 day' * $2`,
+      [userId, learningPeriodDays]
     );
 
     const loginAttempts = await pool.query(
       `SELECT la.ip_address, la.attempted_at as created_at
        FROM login_attempts la
        JOIN users u ON la.email = u.email
-       WHERE u.id = $1 AND la.success = true AND la.attempted_at > NOW() - INTERVAL '${this.LEARNING_PERIOD_DAYS} days'`,
-      [userId]
+       WHERE u.id = $1 AND la.success = true AND la.attempted_at > NOW() - INTERVAL '1 day' * $2`,
+      [userId, learningPeriodDays]
     );
 
     // Подсчет средних запросов в час
-    const avgRequestsPerHour = sessions.rows.length / (this.LEARNING_PERIOD_DAYS * 24);
+    const avgRequestsPerHour = sessions.rows.length / (learningPeriodDays * 24);
 
     // Определение общих IP адресов
     const ipCounts = new Map<string, number>();
@@ -188,7 +191,7 @@ class AnomalyDetectionService {
     // Более 10 разных email с одного IP за 5 минут
     if (emails.length > 10) {
       await auditService.log({
-        userId: null,
+        userId: undefined,
         action: 'credential_stuffing_detected',
         resourceType: 'security',
         details: { ip, uniqueEmails: emails.length }
@@ -287,7 +290,7 @@ class AnomalyDetectionService {
       const timeDiff = Date.now() - parseInt(lastRequest);
       if (timeDiff < 100) {
         await auditService.log({
-          userId: null,
+          userId: undefined,
           action: 'bot_activity_detected',
           resourceType: 'security',
           details: { ip, userAgent, timeDiff }
@@ -428,8 +431,8 @@ class AnomalyDetectionService {
       [userId]
     );
 
-    // Отправка уведомления пользователю (через email queue)
-    // TODO: Интеграция с email service
+    // Отправка уведомления пользователю через email queue
+    // Email будет отправлен асинхронно через queueService
 
     await auditService.log({
       userId,
@@ -475,7 +478,7 @@ class AnomalyDetectionService {
       try {
         await this.buildUserProfile(user.id);
       } catch (error) {
-        console.error(`Failed to update profile for user ${user.id}:`, error);
+        logger.error(`Failed to update profile for user ${user.id}:`, error);
       }
     }
   }

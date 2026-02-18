@@ -1,5 +1,6 @@
 import db from '../../config/database';
 import { Product } from '../../types';
+import logger from '../../utils/logger';
 
 export interface Favorite {
   id: number;
@@ -53,7 +54,7 @@ export class FavoritesService {
 
       return result.rows[0];
     } catch (error) {
-      console.error('❌ Add favorite error:', error);
+      logger.error('Add favorite error:', error);
       throw error;
     }
   }
@@ -67,7 +68,7 @@ export class FavoritesService {
 
       return result.rowCount! > 0;
     } catch (error) {
-      console.error('❌ Remove favorite error:', error);
+      logger.error('Remove favorite error:', error);
       throw error;
     }
   }
@@ -96,7 +97,7 @@ export class FavoritesService {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      console.error('❌ Get favorites error:', error);
+      logger.error('Get favorites error:', error);
       throw error;
     }
   }
@@ -110,7 +111,7 @@ export class FavoritesService {
 
       return result.rows.length > 0;
     } catch (error) {
-      console.error('❌ Check favorite error:', error);
+      logger.error('Check favorite error:', error);
       return false;
     }
   }

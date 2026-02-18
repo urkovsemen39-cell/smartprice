@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { searchProducts } from '../../services/search/searchService';
 import { SearchParams } from '../../types';
 import { optionalAuthMiddleware, AuthRequest } from '../../middleware/auth';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     
     res.json(result);
   } catch (error) {
-    console.error('❌ Search error:', error);
+    logger.error('Search error:', error);
     res.status(500).json({ 
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'

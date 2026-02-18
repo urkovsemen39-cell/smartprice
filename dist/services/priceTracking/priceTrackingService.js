@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceTrackingService = void 0;
 const database_1 = __importDefault(require("../../config/database"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 class PriceTrackingService {
     async createAlert(userId, productId, marketplace, productName, targetPrice, currentPrice, productUrl) {
         try {
@@ -24,7 +25,7 @@ class PriceTrackingService {
             return result.rows[0];
         }
         catch (error) {
-            console.error('❌ Create alert error:', error);
+            logger_1.default.error('Create alert error:', error);
             throw error;
         }
     }
@@ -48,7 +49,7 @@ class PriceTrackingService {
             };
         }
         catch (error) {
-            console.error('❌ Get alerts error:', error);
+            logger_1.default.error('Get alerts error:', error);
             throw error;
         }
     }
@@ -57,7 +58,7 @@ class PriceTrackingService {
             await database_1.default.query('UPDATE price_tracking SET current_price = $1, updated_at = NOW() WHERE id = $2', [newPrice, alertId]);
         }
         catch (error) {
-            console.error('❌ Update price error:', error);
+            logger_1.default.error('Update price error:', error);
             throw error;
         }
     }
@@ -74,7 +75,7 @@ class PriceTrackingService {
             return false;
         }
         catch (error) {
-            console.error('❌ Check and notify error:', error);
+            logger_1.default.error('Check and notify error:', error);
             return false;
         }
     }
@@ -84,7 +85,7 @@ class PriceTrackingService {
             return result.rowCount > 0;
         }
         catch (error) {
-            console.error('❌ Deactivate alert error:', error);
+            logger_1.default.error('Deactivate alert error:', error);
             throw error;
         }
     }
@@ -94,7 +95,7 @@ class PriceTrackingService {
             return result.rowCount > 0;
         }
         catch (error) {
-            console.error('❌ Delete alert error:', error);
+            logger_1.default.error('Delete alert error:', error);
             throw error;
         }
     }
@@ -106,7 +107,7 @@ class PriceTrackingService {
             return result.rows;
         }
         catch (error) {
-            console.error('❌ Get alerts to check error:', error);
+            logger_1.default.error('Get alerts to check error:', error);
             return [];
         }
     }

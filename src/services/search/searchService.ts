@@ -1,8 +1,9 @@
 import { SearchParams, SearchResponse, Product } from '../../types';
 import { YandexMarketAdapter } from '../marketplaces/yandexMarket';
 import { MockMarketplaceAdapter } from '../marketplaces/mockMarketplace';
-import cacheService from '../cache/cacheService';
+import { advancedCacheService } from '../cache/advancedCacheService';
 import analyticsService from '../analytics/analyticsService';
+import logger from '../../utils/logger';
 
 const marketplaces = [
   new MockMarketplaceAdapter('Яндекс.Маркет'),
@@ -22,7 +23,7 @@ export async function searchProducts(params: SearchParams, userId?: number): Pro
 
   try {
     // Проверяем кэш
-    const cached = await cacheService.getCachedSearchResults(query, filters, sort);
+    const cached = await advancedCacheService.getCachedSearchResults(query, filters);
     if (cached) {
       await analyticsService.trackSearch(userId || null, query, filters, cached.total);
       return cached;
@@ -49,7 +50,7 @@ export async function searchProducts(params: SearchParams, userId?: number): Pro
       if (result.status === 'fulfilled') {
         allProducts = allProducts.concat(result.value);
       } else {
-        console.error(`❌ ${marketplaces[index].name} failed:`, result.reason.message);
+        logger.error(`${marketplaces[index].name} failed:`, result.reason.message);
       }
     });
 
@@ -78,14 +79,14 @@ export async function searchProducts(params: SearchParams, userId?: number): Pro
 
     // Кэшируем результаты с учетом популярности
     const popularity = await analyticsService.getQueryPopularityCount(query);
-    await cacheService.cacheSearchResults(query, filters, sort, response, popularity);
+    await advancedCacheService.cacheSearchResults(query, filters, response);
 
     // Трекаем поиск
     await analyticsService.trackSearch(userId || null, query, filters, total);
 
     return response;
   } catch (error) {
-    console.error('❌ Search service error:', error);
+    logger.error('Search service error:', error);
     throw error;
   }
 }

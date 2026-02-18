@@ -286,7 +286,8 @@ class WAFMiddleware {
 
         next();
       } catch (error) {
-        console.error('WAF middleware error:', error);
+        const logger = require('../utils/logger').default;
+        logger.error('WAF middleware error:', error);
         next(); // Не блокируем запрос при ошибке WAF
       }
     };

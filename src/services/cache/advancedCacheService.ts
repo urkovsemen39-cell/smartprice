@@ -1,6 +1,13 @@
+/**
+ * Unified Caching Service
+ * Двухуровневое кэширование: L1 (Memory) + L2 (Redis)
+ */
+
 import NodeCache from 'node-cache';
 import { redisClient } from '../../config/redis';
 import { setWithExpiry, deleteKeys, flushDatabase } from '../../utils/redisHelpers';
+import { CACHE } from '../../config/constants';
+import logger from '../../utils/logger';
 
 class AdvancedCacheService {
   private l1Cache: NodeCache;
@@ -14,7 +21,7 @@ class AdvancedCacheService {
       useClones: false, // Не клонировать объекты для производительности
     });
 
-    console.log('✅ Advanced caching service initialized (L1 + L2)');
+    logger.info('Advanced caching service initialized (L1 + L2)');
   }
 
   // Получение из кэша (L1 -> L2)
@@ -23,14 +30,14 @@ class AdvancedCacheService {
       // Проверка L1 (memory)
       const l1Value = this.l1Cache.get<T>(key);
       if (l1Value !== undefined) {
-        console.log(`🎯 L1 cache hit: ${key}`);
+        logger.debug(`L1 cache hit: ${key}`);
         return l1Value;
       }
 
       // Проверка L2 (Redis)
       const l2Value = await redisClient.get(key);
       if (l2Value) {
-        console.log(`🎯 L2 cache hit: ${key}`);
+        logger.debug(`L2 cache hit: ${key}`);
         const parsed = JSON.parse(l2Value) as T;
         
         // Сохранение в L1 для следующих запросов
@@ -39,10 +46,10 @@ class AdvancedCacheService {
         return parsed;
       }
 
-      console.log(`❌ Cache miss: ${key}`);
+      logger.debug(`Cache miss: ${key}`);
       return null;
     } catch (error) {
-      console.error('❌ Error getting from cache:', error);
+      logger.error('Error getting from cache:', error);
       return null;
     }
   }
@@ -58,7 +65,7 @@ class AdvancedCacheService {
 
       return true;
     } catch (error) {
-      console.error('❌ Error setting cache:', error);
+      logger.error('Error setting cache:', error);
       return false;
     }
   }
@@ -70,7 +77,7 @@ class AdvancedCacheService {
       await redisClient.del(key);
       return true;
     } catch (error) {
-      console.error('❌ Error deleting from cache:', error);
+      logger.error('Error deleting from cache:', error);
       return false;
     }
   }
@@ -89,10 +96,10 @@ class AdvancedCacheService {
       // Удаление из L2
       await deleteKeys(...keys);
       
-      console.log(`🗑️ Deleted ${keys.length} keys matching pattern: ${pattern}`);
+      logger.info(`Deleted ${keys.length} keys matching pattern: ${pattern}`);
       return keys.length;
     } catch (error) {
-      console.error('❌ Error deleting pattern:', error);
+      logger.error('Error deleting pattern:', error);
       return 0;
     }
   }
@@ -121,7 +128,7 @@ class AdvancedCacheService {
 
       return data;
     } catch (error) {
-      console.error('❌ Error in getOrSet:', error);
+      logger.error('Error in getOrSet:', error);
       return null;
     }
   }
@@ -129,11 +136,11 @@ class AdvancedCacheService {
   // Cache warming - предзагрузка популярных данных
   async warmCache(warmingFn: () => Promise<void>): Promise<void> {
     try {
-      console.log('🔥 Starting cache warming...');
+      logger.info('Starting cache warming...');
       await warmingFn();
-      console.log('✅ Cache warming completed');
+      logger.info('Cache warming completed');
     } catch (error) {
-      console.error('❌ Error warming cache:', error);
+      logger.error('Error warming cache:', error);
     }
   }
 
@@ -151,7 +158,7 @@ class AdvancedCacheService {
   async flush(): Promise<void> {
     this.l1Cache.flushAll();
     await flushDatabase();
-    console.log('🗑️ Cache flushed (L1 + L2)');
+    logger.info('Cache flushed (L1 + L2)');
   }
 
   // Специализированные методы для конкретных данных
@@ -206,6 +213,17 @@ class AdvancedCacheService {
 
   async getCachedPopularProducts(): Promise<any[] | null> {
     return await this.get('popular_products');
+  }
+
+  // Кэширование подсказок поиска
+  async cacheSuggestions(query: string, suggestions: string[]): Promise<void> {
+    const key = `suggestions:${query}`;
+    await this.set(key, suggestions, 1800); // 30 минут
+  }
+
+  async getCachedSuggestions(query: string): Promise<string[] | null> {
+    const key = `suggestions:${query}`;
+    return await this.get(key);
   }
 }
 

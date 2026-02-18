@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import metricsService from '../../services/monitoring/metricsService';
 import db from '../../config/database';
 import redisClient from '../../config/redis';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.set('Content-Type', 'text/plain');
     res.send(metrics);
   } catch (error) {
-    console.error('❌ Metrics error:', error);
+    logger.error('Metrics error:', error);
     res.status(500).send('Failed to get metrics');
   }
 });
@@ -56,7 +57,7 @@ router.get('/json', async (req: Request, res: Response) => {
       metrics,
     });
   } catch (error) {
-    console.error('❌ Metrics JSON error:', error);
+    logger.error('Metrics JSON error:', error);
     res.status(500).json({ error: 'Failed to get metrics' });
   }
 });

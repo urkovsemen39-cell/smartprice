@@ -1,29 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.pool = void 0;
+exports.checkDatabaseHealth = checkDatabaseHealth;
 const pg_1 = require("pg");
-// Конфигурация пула в зависимости от окружения
+const gracefulDegradation_1 = require("../utils/gracefulDegradation");
+const constants_1 = require("./constants");
 const isProduction = process.env.NODE_ENV === 'production';
 const poolConfig = {
-    // Размер пула
-    max: isProduction ? 20 : 10, // Максимум соединений
-    min: isProduction ? 5 : 2, // Минимум соединений
-    // Таймауты
-    idleTimeoutMillis: 30000, // Закрывать неактивные соединения через 30 сек
-    connectionTimeoutMillis: 5000, // Таймаут подключения 5 сек
-    // Query таймауты (защита от долгих запросов)
-    statement_timeout: 30000, // 30 сек на выполнение запроса
-    query_timeout: 30000, // 30 сек общий таймаут
-    // Настройки для production
+    max: constants_1.DATABASE.POOL_MAX,
+    min: constants_1.DATABASE.POOL_MIN,
+    idleTimeoutMillis: constants_1.DATABASE.IDLE_TIMEOUT,
+    connectionTimeoutMillis: constants_1.DATABASE.CONNECTION_TIMEOUT,
+    statement_timeout: constants_1.DATABASE.STATEMENT_TIMEOUT,
+    query_timeout: constants_1.DATABASE.QUERY_TIMEOUT,
     ...(isProduction && {
         ssl: { rejectUnauthorized: false },
-        // Автоматическое переподключение
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
     }),
 };
-// Используем DATABASE_URL если доступен (Railway, Heroku, etc.)
-// Иначе используем отдельные переменные для локальной разработки
 const pool = process.env.DATABASE_URL
     ? new pg_1.Pool({
         connectionString: process.env.DATABASE_URL,
@@ -38,33 +33,53 @@ const pool = process.env.DATABASE_URL
         ...poolConfig,
     });
 exports.pool = pool;
-// Обработка ошибок пула
 pool.on('error', (err, client) => {
-    console.error('❌ Unexpected database pool error:', err);
-    // В production можно добавить отправку алертов
+    const logger = require('../utils/logger').default;
+    logger.error('Unexpected database pool error:', err);
+    gracefulDegradation_1.GracefulDegradation.setDBStatus(false);
     if (isProduction) {
-        // TODO: Отправить алерт в систему мониторинга
+        // Alert будет отправлен через alertService при критичных проблемах
+        logger.error('Database connection lost in production');
     }
 });
 pool.on('connect', (client) => {
+    gracefulDegradation_1.GracefulDegradation.setDBStatus(true);
     if (!isProduction) {
-        console.log('✅ New database connection established');
+        const logger = require('../utils/logger').default;
+        logger.info('New database connection established');
     }
 });
 pool.on('acquire', (client) => {
     if (!isProduction) {
-        console.log('🔄 Database connection acquired from pool');
+        const logger = require('../utils/logger').default;
+        logger.debug('Database connection acquired from pool');
     }
 });
 pool.on('remove', (client) => {
     if (!isProduction) {
-        console.log('🗑️ Database connection removed from pool');
+        const logger = require('../utils/logger').default;
+        logger.debug('Database connection removed from pool');
     }
 });
+// Health check function
+async function checkDatabaseHealth() {
+    try {
+        await pool.query('SELECT 1');
+        gracefulDegradation_1.GracefulDegradation.setDBStatus(true);
+        return true;
+    }
+    catch (error) {
+        const logger = require('../utils/logger').default;
+        logger.error('Database health check failed:', error);
+        gracefulDegradation_1.GracefulDegradation.setDBStatus(false);
+        return false;
+    }
+}
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('⚠️ SIGTERM received, closing database pool...');
+    const logger = require('../utils/logger').default;
+    logger.warn('SIGTERM received, closing database pool...');
     await pool.end();
-    console.log('✅ Database pool closed');
+    logger.info('Database pool closed');
 });
 exports.default = pool;

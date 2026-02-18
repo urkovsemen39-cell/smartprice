@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const searchService_1 = require("../../services/search/searchService");
 const auth_1 = require("../../middleware/auth");
+const logger_1 = __importDefault(require("../../utils/logger"));
 const router = (0, express_1.Router)();
 router.use(auth_1.optionalAuthMiddleware);
 router.get('/', async (req, res) => {
@@ -35,7 +39,7 @@ router.get('/', async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        console.error('❌ Search error:', error);
+        logger_1.default.error('Search error:', error);
         res.status(500).json({
             error: 'Internal server error',
             message: error instanceof Error ? error.message : 'Unknown error'

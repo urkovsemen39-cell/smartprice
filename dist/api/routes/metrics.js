@@ -7,6 +7,7 @@ const express_1 = require("express");
 const metricsService_1 = __importDefault(require("../../services/monitoring/metricsService"));
 const database_1 = __importDefault(require("../../config/database"));
 const redis_1 = __importDefault(require("../../config/redis"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 const router = (0, express_1.Router)();
 // Prometheus metrics endpoint
 router.get('/', async (req, res) => {
@@ -16,7 +17,7 @@ router.get('/', async (req, res) => {
         res.send(metrics);
     }
     catch (error) {
-        console.error('❌ Metrics error:', error);
+        logger_1.default.error('Metrics error:', error);
         res.status(500).send('Failed to get metrics');
     }
 });
@@ -57,7 +58,7 @@ router.get('/json', async (req, res) => {
         });
     }
     catch (error) {
-        console.error('❌ Metrics JSON error:', error);
+        logger_1.default.error('Metrics JSON error:', error);
         res.status(500).json({ error: 'Failed to get metrics' });
     }
 });

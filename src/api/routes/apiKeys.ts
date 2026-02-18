@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { apiKeyService } from '../../services/auth/apiKeyService';
 import { authenticateToken } from '../../middleware/auth';
 import { auditService } from '../../services/audit/auditService';
+import Pagination from '../../utils/pagination';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -33,20 +35,25 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       message: 'API key created. Save it securely, it will not be shown again.' 
     });
   } catch (error) {
-    console.error('Error creating API key:', error);
+    logger.error('Error creating API key:', error);
     res.status(500).json({ error: 'Failed to create API key' });
   }
 });
 
-// Получение всех ключей пользователя
+// Получение всех ключей пользователя (с пагинацией)
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const keys = await apiKeyService.getUserKeys(userId);
+    const { page, limit, offset } = Pagination.parseParams(req.query);
 
-    res.json({ keys });
+    const keys = await apiKeyService.getUserKeys(userId, limit, offset);
+    const total = await apiKeyService.getUserKeysCount(userId);
+
+    const result = Pagination.createResult(keys, total, page, limit);
+
+    res.json(result);
   } catch (error) {
-    console.error('Error getting API keys:', error);
+    logger.error('Error getting API keys:', error);
     res.status(500).json({ error: 'Failed to get API keys' });
   }
 });
@@ -74,7 +81,7 @@ router.delete('/:keyId', authenticateToken, async (req: Request, res: Response) 
       res.status(404).json({ error: 'API key not found' });
     }
   } catch (error) {
-    console.error('Error revoking API key:', error);
+    logger.error('Error revoking API key:', error);
     res.status(500).json({ error: 'Failed to revoke API key' });
   }
 });
@@ -89,7 +96,7 @@ router.get('/:keyId/stats', authenticateToken, async (req: Request, res: Respons
 
     res.json({ stats });
   } catch (error) {
-    console.error('Error getting key stats:', error);
+    logger.error('Error getting key stats:', error);
     res.status(500).json({ error: 'Failed to get key stats' });
   }
 });

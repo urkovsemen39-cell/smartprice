@@ -1,5 +1,5 @@
-import express from 'express';
-import { authenticateToken } from '../../middleware/auth';
+import express, { Request, Response } from 'express';
+import { authenticateToken, requireAdmin, AuthRequest } from '../../middleware/auth';
 import twoFactorAuthService from '../../services/security/twoFactorAuthService';
 import intrusionPreventionService from '../../services/security/intrusionPreventionService';
 import vulnerabilityScannerService from '../../services/security/vulnerabilityScannerService';
@@ -8,6 +8,7 @@ import anomalyDetectionService from '../../services/security/anomalyDetectionSer
 import securityMonitoringService from '../../services/security/securityMonitoringService';
 import secretsManagementService from '../../services/security/secretsManagementService';
 import wafMiddleware from '../../middleware/waf';
+import logger from '../../utils/logger';
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.post('/2fa/setup', authenticateToken, async (req, res) => {
       backupCodes: setup.backupCodes
     });
   } catch (error) {
-    console.error('2FA setup error:', error);
+    logger.error('2FA setup error:', error);
     res.status(500).json({ error: 'Failed to setup 2FA' });
   }
 });
@@ -57,7 +58,7 @@ router.post('/2fa/enable', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: '2FA enabled successfully' });
   } catch (error) {
-    console.error('2FA enable error:', error);
+    logger.error('2FA enable error:', error);
     res.status(500).json({ error: 'Failed to enable 2FA' });
   }
 });
@@ -82,7 +83,7 @@ router.post('/2fa/disable', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: '2FA disabled successfully' });
   } catch (error) {
-    console.error('2FA disable error:', error);
+    logger.error('2FA disable error:', error);
     res.status(500).json({ error: 'Failed to disable 2FA' });
   }
 });
@@ -103,7 +104,7 @@ router.post('/2fa/verify', authenticateToken, async (req, res) => {
 
     res.json({ success: true, verified });
   } catch (error) {
-    console.error('2FA verify error:', error);
+    logger.error('2FA verify error:', error);
     res.status(500).json({ error: 'Failed to verify token' });
   }
 });
@@ -119,7 +120,7 @@ router.post('/2fa/regenerate-backup-codes', authenticateToken, async (req, res) 
 
     res.json({ success: true, backupCodes });
   } catch (error) {
-    console.error('Backup codes regeneration error:', error);
+    logger.error('Backup codes regeneration error:', error);
     res.status(500).json({ error: 'Failed to regenerate backup codes' });
   }
 });
@@ -135,7 +136,7 @@ router.get('/2fa/status', authenticateToken, async (req, res) => {
 
     res.json({ success: true, enabled });
   } catch (error) {
-    console.error('2FA status error:', error);
+    logger.error('2FA status error:', error);
     res.status(500).json({ error: 'Failed to get 2FA status' });
   }
 });
@@ -145,30 +146,29 @@ router.get('/2fa/status', authenticateToken, async (req, res) => {
 // ============================================
 
 /**
- * Получение дашборда безопасности
+ * Получение дашборда безопасности (только для админов)
  */
-router.get('/dashboard', authenticateToken, async (req, res) => {
+router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // TODO: Add admin check
     const dashboard = await securityMonitoringService.getSecurityDashboard();
 
     res.json({ success: true, dashboard });
   } catch (error) {
-    console.error('Security dashboard error:', error);
+    logger.error('Security dashboard error:', error);
     res.status(500).json({ error: 'Failed to get security dashboard' });
   }
 });
 
 /**
- * Получение активных алертов
+ * Получение активных алертов (только для админов)
  */
-router.get('/alerts', authenticateToken, async (req, res) => {
+router.get('/alerts', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const alerts = await securityMonitoringService.getActiveAlerts();
 
     res.json({ success: true, alerts });
   } catch (error) {
-    console.error('Get alerts error:', error);
+    logger.error('Get alerts error:', error);
     res.status(500).json({ error: 'Failed to get alerts' });
   }
 });
@@ -185,7 +185,7 @@ router.post('/alerts/:id/acknowledge', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: 'Alert acknowledged' });
   } catch (error) {
-    console.error('Acknowledge alert error:', error);
+    logger.error('Acknowledge alert error:', error);
     res.status(500).json({ error: 'Failed to acknowledge alert' });
   }
 });
@@ -202,7 +202,7 @@ router.post('/alerts/:id/resolve', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: 'Alert resolved' });
   } catch (error) {
-    console.error('Resolve alert error:', error);
+    logger.error('Resolve alert error:', error);
     res.status(500).json({ error: 'Failed to resolve alert' });
   }
 });
@@ -216,7 +216,7 @@ router.post('/scan/vulnerabilities', authenticateToken, async (req, res) => {
 
     res.json({ success: true, result });
   } catch (error) {
-    console.error('Vulnerability scan error:', error);
+    logger.error('Vulnerability scan error:', error);
     res.status(500).json({ error: 'Failed to perform vulnerability scan' });
   }
 });
@@ -230,7 +230,7 @@ router.get('/scan/latest', authenticateToken, async (req, res) => {
 
     res.json({ success: true, scan });
   } catch (error) {
-    console.error('Get latest scan error:', error);
+    logger.error('Get latest scan error:', error);
     res.status(500).json({ error: 'Failed to get latest scan' });
   }
 });
@@ -245,7 +245,7 @@ router.get('/scan/history', authenticateToken, async (req, res) => {
 
     res.json({ success: true, history });
   } catch (error) {
-    console.error('Get scan history error:', error);
+    logger.error('Get scan history error:', error);
     res.status(500).json({ error: 'Failed to get scan history' });
   }
 });
@@ -260,7 +260,7 @@ router.get('/intrusions/stats', authenticateToken, async (req, res) => {
 
     res.json({ success: true, stats });
   } catch (error) {
-    console.error('Get intrusion stats error:', error);
+    logger.error('Get intrusion stats error:', error);
     res.status(500).json({ error: 'Failed to get intrusion stats' });
   }
 });
@@ -274,7 +274,7 @@ router.get('/ddos/metrics', authenticateToken, async (req, res) => {
 
     res.json({ success: true, metrics });
   } catch (error) {
-    console.error('Get DDoS metrics error:', error);
+    logger.error('Get DDoS metrics error:', error);
     res.status(500).json({ error: 'Failed to get DDoS metrics' });
   }
 });
@@ -289,15 +289,15 @@ router.get('/ddos/top-attackers', authenticateToken, async (req, res) => {
 
     res.json({ success: true, attackers });
   } catch (error) {
-    console.error('Get top attackers error:', error);
+    logger.error('Get top attackers error:', error);
     res.status(500).json({ error: 'Failed to get top attackers' });
   }
 });
 
 /**
- * Блокировка IP
+ * Блокировка IP (только для админов)
  */
-router.post('/ip/block', authenticateToken, async (req, res) => {
+router.post('/ip/block', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { ip, reason, duration } = req.body;
 
@@ -305,19 +305,35 @@ router.post('/ip/block', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
 
+    // Валидация IP адреса
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^([0-9a-fA-F]{0,4}:){7}[0-9a-fA-F]{0,4}$/;
+    
+    if (!ipv4Regex.test(ip) && !ipv6Regex.test(ip)) {
+      return res.status(400).json({ error: 'Invalid IP address format' });
+    }
+
+    // Дополнительная проверка для IPv4
+    if (ipv4Regex.test(ip)) {
+      const parts = ip.split('.').map((part: string) => Number(part));
+      if (parts.some((part: number) => part < 0 || part > 255)) {
+        return res.status(400).json({ error: 'Invalid IPv4 address' });
+      }
+    }
+
     await intrusionPreventionService.blockIP(ip, reason || 'manual_block', duration);
 
     res.json({ success: true, message: 'IP blocked successfully' });
   } catch (error) {
-    console.error('Block IP error:', error);
+    logger.error('Block IP error:', error);
     res.status(500).json({ error: 'Failed to block IP' });
   }
 });
 
 /**
- * Разблокировка IP
+ * Разблокировка IP (только для админов)
  */
-router.post('/ip/unblock', authenticateToken, async (req, res) => {
+router.post('/ip/unblock', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { ip } = req.body;
 
@@ -325,11 +341,19 @@ router.post('/ip/unblock', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
 
+    // Валидация IP адреса
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^([0-9a-fA-F]{0,4}:){7}[0-9a-fA-F]{0,4}$/;
+    
+    if (!ipv4Regex.test(ip) && !ipv6Regex.test(ip)) {
+      return res.status(400).json({ error: 'Invalid IP address format' });
+    }
+
     await intrusionPreventionService.unblockIP(ip);
 
     res.json({ success: true, message: 'IP unblocked successfully' });
   } catch (error) {
-    console.error('Unblock IP error:', error);
+    logger.error('Unblock IP error:', error);
     res.status(500).json({ error: 'Failed to unblock IP' });
   }
 });
@@ -349,7 +373,7 @@ router.post('/ip/blacklist', authenticateToken, async (req, res) => {
 
     res.json({ success: true, message: 'IP added to blacklist' });
   } catch (error) {
-    console.error('Blacklist IP error:', error);
+    logger.error('Blacklist IP error:', error);
     res.status(500).json({ error: 'Failed to blacklist IP' });
   }
 });
@@ -364,7 +388,7 @@ router.get('/anomalies/stats', authenticateToken, async (req, res) => {
 
     res.json({ success: true, stats });
   } catch (error) {
-    console.error('Get anomaly stats error:', error);
+    logger.error('Get anomaly stats error:', error);
     res.status(500).json({ error: 'Failed to get anomaly stats' });
   }
 });
@@ -379,7 +403,7 @@ router.get('/waf/stats', authenticateToken, async (req, res) => {
 
     res.json({ success: true, stats });
   } catch (error) {
-    console.error('Get WAF stats error:', error);
+    logger.error('Get WAF stats error:', error);
     res.status(500).json({ error: 'Failed to get WAF stats' });
   }
 });
@@ -395,7 +419,7 @@ router.get('/waf/top-blocked', authenticateToken, async (req, res) => {
 
     res.json({ success: true, blocked });
   } catch (error) {
-    console.error('Get top blocked IPs error:', error);
+    logger.error('Get top blocked IPs error:', error);
     res.status(500).json({ error: 'Failed to get top blocked IPs' });
   }
 });
@@ -410,7 +434,7 @@ router.get('/report', authenticateToken, async (req, res) => {
 
     res.json({ success: true, report });
   } catch (error) {
-    console.error('Export report error:', error);
+    logger.error('Export report error:', error);
     res.status(500).json({ error: 'Failed to export security report' });
   }
 });
@@ -438,7 +462,7 @@ router.post('/secrets/rotate', authenticateToken, async (req, res) => {
 
     res.json({ success: true, result });
   } catch (error) {
-    console.error('Rotate secrets error:', error);
+    logger.error('Rotate secrets error:', error);
     res.status(500).json({ error: 'Failed to rotate secrets' });
   }
 });
@@ -455,9 +479,10 @@ router.get('/secrets/history', authenticateToken, async (req, res) => {
 
     res.json({ success: true, history });
   } catch (error) {
-    console.error('Get rotation history error:', error);
+    logger.error('Get rotation history error:', error);
     res.status(500).json({ error: 'Failed to get rotation history' });
   }
 });
 
 export default router;
+

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import favoritesService from '../../services/favorites/favoritesService';
 import { authMiddleware, AuthRequest } from '../../middleware/auth';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const result = await favoritesService.getFavorites(req.userId!, page, limit);
     res.json(result);
   } catch (error) {
-    console.error('❌ Get favorites error:', error);
+    logger.error('Get favorites error:', error);
     res.status(500).json({ error: 'Failed to get favorites' });
   }
 });
@@ -40,7 +41,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const favorite = await favoritesService.addFavorite(req.userId!, product);
     res.json({ favorite });
   } catch (error) {
-    console.error('❌ Add favorite error:', error);
+    logger.error('Add favorite error:', error);
     res.status(500).json({ error: 'Failed to add favorite' });
   }
 });
@@ -56,7 +57,7 @@ router.delete('/:productId', async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: 'Favorite not found' });
     }
   } catch (error) {
-    console.error('❌ Remove favorite error:', error);
+    logger.error('Remove favorite error:', error);
     res.status(500).json({ error: 'Failed to remove favorite' });
   }
 });
@@ -67,7 +68,7 @@ router.get('/check/:productId', async (req: AuthRequest, res: Response) => {
     const isFavorite = await favoritesService.isFavorite(req.userId!, productId);
     res.json({ isFavorite });
   } catch (error) {
-    console.error('❌ Check favorite error:', error);
+    logger.error('Check favorite error:', error);
     res.status(500).json({ error: 'Failed to check favorite' });
   }
 });

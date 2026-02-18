@@ -1,5 +1,6 @@
 import db from '../../config/database';
 import { SearchFilters } from '../../types';
+import logger from '../../utils/logger';
 
 export class AnalyticsService {
   async trackClick(
@@ -14,7 +15,7 @@ export class AnalyticsService {
         [userId, productId, marketplace, query]
       );
     } catch (error) {
-      console.error('❌ Track click error:', error);
+      logger.error('Track click error:', error);
     }
   }
 
@@ -22,7 +23,7 @@ export class AnalyticsService {
     try {
       // Валидация и санитизация
       if (typeof query !== 'string' || query.length > 500) {
-        console.warn('⚠️ Invalid query for tracking');
+        logger.warn('Invalid query for tracking');
         return;
       }
 
@@ -30,7 +31,7 @@ export class AnalyticsService {
       try {
         filtersJson = JSON.stringify(filters || {});
       } catch (e) {
-        console.warn('⚠️ Failed to stringify filters');
+        logger.warn('Failed to stringify filters');
       }
 
       await db.query(
@@ -46,7 +47,7 @@ export class AnalyticsService {
         [query.toLowerCase().trim()]
       );
     } catch (error) {
-      console.error('❌ Track search error:', error);
+      logger.error('Track search error:', error);
     }
   }
 
@@ -59,7 +60,7 @@ export class AnalyticsService {
 
       return result.rows.map(row => row.query);
     } catch (error) {
-      console.error('❌ Get popular queries error:', error);
+      logger.error('Get popular queries error:', error);
       return [];
     }
   }
@@ -73,7 +74,7 @@ export class AnalyticsService {
 
       return result.rows;
     } catch (error) {
-      console.error('❌ Get search history error:', error);
+      logger.error('Get search history error:', error);
       return [];
     }
   }
@@ -93,7 +94,7 @@ export class AnalyticsService {
       if (count >= 10) return 'normal';
       return 'rare';
     } catch (error) {
-      console.error('❌ Get query popularity error:', error);
+      logger.error('Get query popularity error:', error);
       return 'normal';
     }
   }
@@ -109,7 +110,7 @@ export class AnalyticsService {
 
       return result.rows[0].search_count;
     } catch (error) {
-      console.error('❌ Get query popularity count error:', error);
+      logger.error('Get query popularity count error:', error);
       return 0;
     }
   }
