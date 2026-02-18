@@ -92,6 +92,8 @@ if (env.NODE_ENV === 'production') {
 // CORS configuration
 const allowedOrigins = [
   env.FRONTEND_URL,
+  'https://frontend-production.up.railway.app',
+  'https://frontend-production-*.up.railway.app',
   ...(env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : [])
 ].filter(Boolean);
 
@@ -99,12 +101,18 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     
+    // Проверяем точное совпадение
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    
+    // Проверяем Railway паттерны
+    if (origin.includes('.up.railway.app')) {
+      return callback(null, true);
+    }
+    
+    logger.warn(`CORS blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
