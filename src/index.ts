@@ -89,33 +89,13 @@ if (env.NODE_ENV === 'production') {
   });
 }
 
-// CORS configuration - разрешаем все Railway домены
+// CORS configuration - максимально открытая для отладки
 app.use(cors({
-  origin: (origin, callback) => {
-    // Разрешаем запросы без origin (мобильные приложения, Postman)
-    if (!origin) return callback(null, true);
-    
-    // Разрешаем все Railway домены
-    if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
-      return callback(null, true);
-    }
-    
-    // Разрешаем localhost в development
-    if (env.NODE_ENV === 'development' && origin.includes('localhost')) {
-      return callback(null, true);
-    }
-    
-    // Разрешаем настроенный FRONTEND_URL
-    if (origin === env.FRONTEND_URL) {
-      return callback(null, true);
-    }
-    
-    logger.warn(`CORS blocked origin: ${origin}`);
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: true, // Разрешаем все origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response', 'X-Owner-Session'],
+  exposedHeaders: ['X-Request-Id'],
   maxAge: 86400,
 }));
 
