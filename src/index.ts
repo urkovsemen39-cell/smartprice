@@ -50,8 +50,6 @@ import { createHandler } from 'graphql-http/lib/use/express';
 import { schema } from './graphql/schema';
 import { pubsub } from './graphql/resolvers';
 import { WebSocketServer } from 'ws';
-// @ts-ignore - graphql-ws types issue
-const { useServer: useGraphQLWsServer } = require('graphql-ws/lib/use/ws');
 
 // Services
 import { databaseMonitoringService } from './services/monitoring/databaseMonitoringService';
@@ -404,29 +402,7 @@ async function startServer() {
     websocketService.initialize(server);
     websocketService.setPubSub(pubsub);
     
-    // Initialize GraphQL WebSocket Server
-    const wsServer = new WebSocketServer({
-      server,
-      path: '/graphql',
-    });
-
-    useGraphQLWsServer({
-      schema,
-      context: async (ctx: any) => {
-        const token = ctx.connectionParams?.authorization?.split(' ')[1];
-        if (token) {
-          try {
-            const decoded = require('jsonwebtoken').verify(token, env.JWT_SECRET) as any;
-            return { userId: decoded.userId };
-          } catch (error) {
-            return {};
-          }
-        }
-        return {};
-      },
-    }, wsServer);
-
-    logger.info('GraphQL WebSocket server initialized');
+    logger.info('WebSocket server initialized');
     
     server.on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {

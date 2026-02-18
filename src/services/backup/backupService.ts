@@ -45,7 +45,10 @@ class BackupService {
   private readonly MAX_BACKUPS = 10; // Максимум хранимых бэкапов
 
   constructor() {
-    this.ensureBackupDir();
+    // В облачных средах (Railway) не создаем директорию автоматически
+    if (process.env.NODE_ENV !== 'production') {
+      this.ensureBackupDir();
+    }
   }
 
   /**
@@ -55,7 +58,7 @@ class BackupService {
     try {
       await fs.mkdir(this.BACKUP_DIR, { recursive: true });
     } catch (error) {
-      logger.error('Error creating backup directory:', error);
+      logger.warn('Unable to create backup directory (read-only filesystem)');
     }
   }
 
