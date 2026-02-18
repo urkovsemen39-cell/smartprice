@@ -89,25 +89,24 @@ if (env.NODE_ENV === 'production') {
   });
 }
 
-// CORS configuration
-const allowedOrigins = [
-  env.FRONTEND_URL,
-  'https://frontend-production.up.railway.app',
-  'https://frontend-production-*.up.railway.app',
-  ...(env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : [])
-].filter(Boolean);
-
+// CORS configuration - разрешаем все Railway домены
 app.use(cors({
   origin: (origin, callback) => {
+    // Разрешаем запросы без origin (мобильные приложения, Postman)
     if (!origin) return callback(null, true);
     
-    // Проверяем точное совпадение
-    if (allowedOrigins.includes(origin)) {
+    // Разрешаем все Railway домены
+    if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
       return callback(null, true);
     }
     
-    // Проверяем Railway паттерны
-    if (origin.includes('.up.railway.app')) {
+    // Разрешаем localhost в development
+    if (env.NODE_ENV === 'development' && origin.includes('localhost')) {
+      return callback(null, true);
+    }
+    
+    // Разрешаем настроенный FRONTEND_URL
+    if (origin === env.FRONTEND_URL) {
       return callback(null, true);
     }
     
