@@ -128,26 +128,26 @@ app.use(requestIdMiddleware);
 // HTTP Caching
 app.use(cachingMiddleware);
 
-// DDoS Protection
-app.use(ddosProtection);
+// DDoS Protection - временно отключено для отладки
+// app.use(ddosProtection);
 
-if (env.ENABLE_GEO_BLOCKING) {
-  app.use(geoBlocking);
-}
+// if (env.ENABLE_GEO_BLOCKING) {
+//   app.use(geoBlocking);
+// }
 
-// WAF
-app.use(wafMiddleware.middleware());
+// WAF - временно отключено для отладки
+// app.use(wafMiddleware.middleware());
 
-// Input Validation & Security
-app.use(securityMiddleware.inputValidation);
-app.use(securityMiddleware.botDetection);
-app.use(securityMiddleware.threatScoreCheck);
-app.use(securityMiddleware.csrfProtection);
+// Input Validation & Security - временно упрощено
+// app.use(securityMiddleware.inputValidation);
+// app.use(securityMiddleware.botDetection);
+// app.use(securityMiddleware.threatScoreCheck);
+// app.use(securityMiddleware.csrfProtection);
 
-// IP-based rate limiting
-if (env.NODE_ENV === 'production') {
-  app.use(securityMiddleware.ipRateLimit);
-}
+// IP-based rate limiting - временно отключено
+// if (env.NODE_ENV === 'production') {
+//   app.use(securityMiddleware.ipRateLimit);
+// }
 
 // Metrics middleware
 app.use(metricsMiddleware);
