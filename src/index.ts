@@ -66,6 +66,13 @@ const PORT = env.PORT;
 app.set('trust proxy', 1);
 
 // ============================================
+// HEALTH CHECK - BEFORE ALL MIDDLEWARE
+// ============================================
+
+// Health checks должны быть доступны без middleware
+app.use('/health', healthRoutes);
+
+// ============================================
 // SECURITY MIDDLEWARE STACK
 // ============================================
 
@@ -223,8 +230,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health checks (no auth required)
-app.use('/health', healthRoutes);
+// Health checks already registered before middleware
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
