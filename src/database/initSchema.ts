@@ -239,6 +239,23 @@ CREATE TABLE IF NOT EXISTS waf_blocks (
 
 CREATE INDEX IF NOT EXISTS idx_waf_ip ON waf_blocks(ip_address);
 CREATE INDEX IF NOT EXISTS idx_waf_blocked ON waf_blocks(blocked_at);
+
+-- CSP violations table
+CREATE TABLE IF NOT EXISTS csp_violations (
+  id SERIAL PRIMARY KEY,
+  document_uri TEXT,
+  violated_directive TEXT,
+  blocked_uri TEXT,
+  source_file TEXT,
+  line_number INTEGER,
+  column_number INTEGER,
+  user_agent TEXT,
+  ip_address VARCHAR(45),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_csp_violations_created_at ON csp_violations(created_at);
+CREATE INDEX IF NOT EXISTS idx_csp_violations_directive ON csp_violations(violated_directive);
 `;
 
 export async function initializeDatabase() {
