@@ -89,9 +89,27 @@ if (env.NODE_ENV === 'production') {
   });
 }
 
-// CORS configuration - максимально открытая для отладки
+// CORS configuration
+const allowedOrigins = [
+  'https://frontend-production-423d.up.railway.app',
+  'https://smartprice-production.up.railway.app',
+  env.FRONTEND_URL,
+  ...(env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : [])
+].filter(Boolean);
+
 app.use(cors({
-  origin: true, // Разрешаем все origins
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.some(allowed => origin.includes(allowed)) || 
+        origin.includes('.railway.app') || 
+        origin.includes('.up.railway.app')) {
+      return callback(null, true);
+    }
+    
+    logger.warn(`CORS blocked origin: ${origin}`);
+    callback(null, true); // Временно разрешаем все для отладки
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Challenge-Response', 'X-Owner-Session'],
@@ -108,26 +126,27 @@ app.use(requestIdMiddleware);
 // HTTP Caching
 app.use(cachingMiddleware);
 
-// DDoS Protection - временно отключено для отладки
-// app.use(ddosProtection);
+// DDoS Protection
+app.use(ddosProtection);
 
-// if (env.ENABLE_GEO_BLOCKING) {
-//   app.use(geoBlocking);
-// }
+if (env.ENABLE_GEO_BLOCKING) {
+  app.use(geoBlocking);
+}
 
-// WAF - временно отключено для отладки
-// app.use(wafMiddleware.middleware());
+// WAF
+app.use(wafMiddleware.middleware());
 
-// Input Validation & Security - временно упрощено
-// app.use(securityMiddleware.inputValidation);
-// app.use(securityMiddleware.botDetection);
-// app.use(securityMiddleware.threatScoreCheck);
+// Input Validation & Security
+app.use(securityMiddleware.inputValidation);
+app.use(securityMiddleware.botDetection);
+app.use(securityMiddleware.threatScoreCheck);
+// CSRF отключен для API
 // app.use(securityMiddleware.csrfProtection);
 
-// IP-based rate limiting - временно отключено
-// if (env.NODE_ENV === 'production') {
-//   app.use(securityMiddleware.ipRateLimit);
-// }
+// IP-based rate limiting
+if (env.NODE_ENV === 'production') {
+  app.use(securityMiddleware.ipRateLimit);
+}
 
 // Metrics middleware
 app.use(metricsMiddleware);
