@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
-  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator')),
+  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator', 'owner')),
   email_verified BOOLEAN DEFAULT FALSE,
   email_verified_at TIMESTAMP,
   account_locked BOOLEAN DEFAULT false,
@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_locked ON users(account_locked);
 
--- Login attempts table (для безопасности и аудита)
+-- Login attempts table
 CREATE TABLE IF NOT EXISTS login_attempts (
   id SERIAL PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
@@ -35,6 +35,56 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_success ON login_attempts(success, attempted_at DESC);
+
+-- Intrusion attempts table
+CREATE TABLE IF NOT EXISTS intrusion_attempts (
+  id SERIAL PRIMARY KEY,
+  ip_address VARCHAR(45) NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  attack_type VARCHAR(100) NOT NULL,
+  severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_intrusion_ip ON intrusion_attempts(ip_address);
+CREATE INDEX IF NOT EXISTS idx_intrusion_created ON intrusion_attempts(created_at);
+
+-- Anomaly detections table
+CREATE TABLE IF NOT EXISTS anomaly_detections (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ip_address VARCHAR(45) NOT NULL,
+  score INTEGER NOT NULL,
+  anomalies JSONB NOT NULL,
+  risk VARCHAR(20) NOT NULL CHECK (risk IN ('low', 'medium', 'high', 'critical')),
+  detected_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_anomaly_user ON anomaly_detections(user_id);
+CREATE INDEX IF NOT EXISTS idx_anomaly_detected ON anomaly_detections(detected_at);
+
+-- User behavior profiles
+CREATE TABLE IF NOT EXISTS user_behavior_profiles (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  profile_data JSONB NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+-- Refresh tokens
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  revoked BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
 
 -- Favorites table
 CREATE TABLE IF NOT EXISTS favorites (
@@ -52,8 +102,6 @@ CREATE TABLE IF NOT EXISTS favorites (
 );
 
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
-CREATE INDEX IF NOT EXISTS idx_favorites_product_id ON favorites(product_id);
-CREATE INDEX IF NOT EXISTS idx_favorites_marketplace ON favorites(marketplace);
 
 -- Search history table
 CREATE TABLE IF NOT EXISTS search_history (
@@ -66,8 +114,6 @@ CREATE TABLE IF NOT EXISTS search_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_search_history_user_id ON search_history(user_id);
-CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history(searched_at DESC);
-CREATE INDEX IF NOT EXISTS idx_search_history_query ON search_history USING gin(to_tsvector('russian', query));
 
 -- Price tracking table
 CREATE TABLE IF NOT EXISTS price_tracking (
@@ -87,8 +133,6 @@ CREATE TABLE IF NOT EXISTS price_tracking (
 
 CREATE INDEX IF NOT EXISTS idx_price_tracking_user_id ON price_tracking(user_id);
 CREATE INDEX IF NOT EXISTS idx_price_tracking_active ON price_tracking(active) WHERE active = true;
-CREATE INDEX IF NOT EXISTS idx_price_tracking_product ON price_tracking(product_id, marketplace);
-CREATE INDEX IF NOT EXISTS idx_price_tracking_notified ON price_tracking(notified, active) WHERE active = true AND notified = false;
 
 -- Price history table
 CREATE TABLE IF NOT EXISTS price_history (
@@ -100,8 +144,6 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, marketplace);
-CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON price_history(recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_price_history_product_date ON price_history(product_id, marketplace, recorded_at DESC);
 
 -- Click analytics table
 CREATE TABLE IF NOT EXISTS click_analytics (
@@ -113,10 +155,6 @@ CREATE TABLE IF NOT EXISTS click_analytics (
   clicked_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_click_analytics_clicked_at ON click_analytics(clicked_at DESC);
-CREATE INDEX IF NOT EXISTS idx_click_analytics_product ON click_analytics(product_id);
-CREATE INDEX IF NOT EXISTS idx_click_analytics_user_id ON click_analytics(user_id) WHERE user_id IS NOT NULL;
-
 -- Popular queries table
 CREATE TABLE IF NOT EXISTS popular_queries (
   id SERIAL PRIMARY KEY,
@@ -125,8 +163,66 @@ CREATE TABLE IF NOT EXISTS popular_queries (
   last_searched TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_popular_queries_count ON popular_queries(search_count DESC);
-CREATE INDEX IF NOT EXISTS idx_popular_queries_last_searched ON popular_queries(last_searched DESC);
+-- Email verifications
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code VARCHAR(6) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  attempts INTEGER DEFAULT 0,
+  verified BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User sessions
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id VARCHAR(255) UNIQUE NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  active BOOLEAN DEFAULT TRUE,
+  last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP NOT NULL
+);
+
+-- API keys
+CREATE TABLE IF NOT EXISTS api_keys (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  key_hash VARCHAR(64) UNIQUE NOT NULL,
+  key_prefix VARCHAR(10) NOT NULL,
+  active BOOLEAN DEFAULT TRUE,
+  last_used_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Audit log
+CREATE TABLE IF NOT EXISTS audit_log (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50),
+  resource_id INTEGER,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  details JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Backups table
+CREATE TABLE IF NOT EXISTS backups (
+  id SERIAL PRIMARY KEY,
+  backup_id VARCHAR(255) UNIQUE NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  size BIGINT NOT NULL,
+  components JSONB NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 `;
 
 export async function initializeDatabase() {
@@ -155,13 +251,12 @@ export async function initializeDatabase() {
       logger.info('✅ Database schema initialized successfully');
     } else {
       logger.info('✅ Database already initialized');
+      
+      // Проверяем и создаем недостающие таблицы
+      logger.info('🔄 Ensuring all tables exist...');
+      await db.query(SCHEMA_SQL);
+      logger.info('✅ All tables verified');
     }
-    
-    // Запускаем миграции
-    logger.info('🔄 Running database migrations...');
-    const { runAllMigrations } = require('./runMigration');
-    await runAllMigrations();
-    logger.info('✅ Migrations completed');
     
   } catch (error) {
     logger.error('❌ Failed to initialize database:', error);
