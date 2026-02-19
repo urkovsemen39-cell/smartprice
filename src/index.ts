@@ -134,19 +134,27 @@ const publicPaths = [
   '/api/v1/health',
   '/metrics',
   '/api/v1/search',
-  '/api/v1/analytics/popular-queries',
-  '/api/v1/analytics/click',
-  '/api/v1/features/environment',
+  '/api/v1/analytics',
+  '/api/v1/features',
   '/api/v1/compare',
   '/api/v1/price-history',
+  '/api/v1/suggestions',
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
   '/',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/api-docs'
 ];
 
 // Middleware для пропуска публичных путей
 const skipForPublicPaths = (middleware: any) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (publicPaths.some(path => req.path === path || req.path.startsWith(path))) {
+    // Проверяем точное совпадение или начало пути
+    const isPublic = publicPaths.some(path => {
+      return req.path === path || req.path.startsWith(path + '/') || req.path.startsWith(path + '?');
+    });
+    
+    if (isPublic) {
       return next();
     }
     return middleware(req, res, next);
@@ -199,6 +207,20 @@ const generalLimiter = rateLimit({
   message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Пропускаем публичные эндпоинты
+    const publicApiPaths = [
+      '/api/v1/search',
+      '/api/v1/analytics',
+      '/api/v1/features',
+      '/api/v1/compare',
+      '/api/v1/price-history',
+      '/api/v1/suggestions',
+      '/api/v1/auth/login',
+      '/api/v1/auth/register'
+    ];
+    return publicApiPaths.some(path => req.path === path || req.path.startsWith(path + '/') || req.path.startsWith(path + '?'));
+  }
 });
 
 const authLimiter = rateLimit({

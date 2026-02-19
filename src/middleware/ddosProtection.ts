@@ -15,13 +15,28 @@ export const ddosProtection = async (req: Request, res: Response, next: NextFunc
     const whitelistedPaths = [
       '/health',
       '/api/health',
+      '/api/v1/health',
       '/metrics',
       '/api/metrics',
+      '/api/v1/search',
+      '/api/v1/analytics',
+      '/api/v1/features',
+      '/api/v1/compare',
+      '/api/v1/price-history',
+      '/api/v1/suggestions',
+      '/api/v1/auth/login',
+      '/api/v1/auth/register',
       '/',
-      '/favicon.ico'
+      '/favicon.ico',
+      '/api-docs'
     ];
 
-    if (whitelistedPaths.includes(endpoint)) {
+    // Проверяем точное совпадение или начало пути
+    const isWhitelisted = whitelistedPaths.some(path => {
+      return endpoint === path || endpoint.startsWith(path + '/') || endpoint.startsWith(path + '?');
+    });
+
+    if (isWhitelisted) {
       return next();
     }
 
