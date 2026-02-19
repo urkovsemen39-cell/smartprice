@@ -271,7 +271,8 @@ app.all('/graphql', (req, res, next) => {
 // API v1 Router
 const v1Router = express.Router();
 
-v1Router.use('/search', securityMiddleware.endpointRateLimit('SEARCH'), searchRoutes);
+// Search - публичный эндпоинт без строгих ограничений
+v1Router.use('/search', searchRoutes);
 v1Router.use('/auth', authLimiter, securityMiddleware.credentialStuffingDetection, authRoutes);
 v1Router.use('/auth/forgot-password', passwordResetLimiter);
 v1Router.use('/auth/reset-password', passwordResetLimiter);
