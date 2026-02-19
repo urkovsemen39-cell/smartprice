@@ -653,25 +653,16 @@ router.get('/backup/instant', requireOwnerMode, async (req: AuthRequest, res: Re
 });
 
 /**
- * Create Full Backup
+ * Create Full Backup (disabled in cloud environments)
  * POST /api/owner/backup/create
  */
 router.post('/backup/create', requireOwnerMode, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.userId!;
-
-    // Запуск бэкапа в фоне
-    backupService.createFullBackup(userId).then(result => {
-      if (result.success) {
-        logger.info(`Backup completed: ${result.backupId}`);
-      } else {
-        logger.error(`Backup failed: ${result.error}`);
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'Backup started in background',
+    // В облачных средах (Railway) файловая система read-only
+    // Используйте Instant Backup вместо этого
+    res.status(HTTP_STATUS.BAD_REQUEST).json({
+      error: 'File-based backups are not available in cloud environment',
+      message: 'Please use Instant Download button instead',
     });
   } catch (error) {
     logger.error('Error starting backup:', error);
