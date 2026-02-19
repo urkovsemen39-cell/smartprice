@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
-  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'moderator', 'owner')),
+  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator', 'owner')),
   email_verified BOOLEAN DEFAULT FALSE,
   email_verified_at TIMESTAMP,
   account_locked BOOLEAN DEFAULT false,
@@ -368,11 +368,11 @@ async function runMigrations() {
         DROP CONSTRAINT IF EXISTS users_role_check;
       `);
       
-      // Создаем новый constraint без 'admin'
+      // Создаем новый constraint со всеми ролями
       await db.query(`
         ALTER TABLE users 
         ADD CONSTRAINT users_role_check 
-        CHECK (role IN ('user', 'moderator', 'owner'));
+        CHECK (role IN ('user', 'admin', 'moderator', 'owner'));
       `);
       logger.info('  ✓ Role check constraint updated');
     } catch (constraintError) {
