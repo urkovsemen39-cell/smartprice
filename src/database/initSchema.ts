@@ -308,11 +308,37 @@ export async function initializeDatabase() {
       logger.info('🔄 Ensuring all tables exist...');
       await db.query(SCHEMA_SQL);
       logger.info('✅ All tables verified');
+      
+      // Выполняем миграции для существующих таблиц
+      logger.info('🔄 Running database migrations...');
+      await runMigrations();
+      logger.info('✅ Migrations completed');
     }
     
   } catch (error) {
     logger.error('❌ Failed to initialize database:', error);
     // Не бросаем ошибку, чтобы сервер мог запуститься
     logger.warn('⚠️  Server will start without full database initialization');
+  }
+}
+
+async function runMigrations() {
+  const logger = require('../utils/logger').default;
+  
+  try {
+    // Миграция 1: Добавление колонок в refresh_tokens
+    logger.info('  → Adding missing columns to refresh_tokens...');
+    await db.query(`
+      ALTER TABLE refresh_tokens 
+      ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45),
+      ADD COLUMN IF NOT EXISTS user_agent TEXT;
+    `);
+    logger.info('  ✓ refresh_tokens columns added');
+    
+  } catch (error) {
+    logger.error('Migration error:', error);
+    // Не бросаем ошибку, продолжаем работу
   }
 }
