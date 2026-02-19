@@ -64,6 +64,37 @@ CREATE TABLE IF NOT EXISTS intrusion_attempts (
 CREATE INDEX IF NOT EXISTS idx_intrusion_ip ON intrusion_attempts(ip_address);
 CREATE INDEX IF NOT EXISTS idx_intrusion_created ON intrusion_attempts(created_at);
 
+-- Security events table
+CREATE TABLE IF NOT EXISTS security_events (
+  id SERIAL PRIMARY KEY,
+  event_type VARCHAR(100) NOT NULL,
+  severity VARCHAR(20) CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  ip_address VARCHAR(45),
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  details JSONB,
+  resolved BOOLEAN DEFAULT FALSE,
+  resolved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_security_events_severity ON security_events(severity);
+CREATE INDEX IF NOT EXISTS idx_security_events_created_at ON security_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_events_unresolved ON security_events(resolved, severity, created_at) WHERE resolved = FALSE;
+
+-- IP blocks table
+CREATE TABLE IF NOT EXISTS ip_blocks (
+  id SERIAL PRIMARY KEY,
+  ip_address VARCHAR(45) UNIQUE NOT NULL,
+  reason TEXT,
+  blocked_until TIMESTAMP,
+  permanent BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ip_blocks_ip ON ip_blocks(ip_address);
+CREATE INDEX IF NOT EXISTS idx_ip_blocks_active ON ip_blocks(ip_address, blocked_until) WHERE permanent = TRUE OR blocked_until > NOW();
+
 -- Anomaly detections table
 CREATE TABLE IF NOT EXISTS anomaly_detections (
   id SERIAL PRIMARY KEY,
