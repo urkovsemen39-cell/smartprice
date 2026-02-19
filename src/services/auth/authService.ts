@@ -211,7 +211,7 @@ export class AuthService {
       logger.info(`Login attempt for email: ${email}`);
       
       // Проверяем блокировку аккаунта
-      let lockout = { locked: false, remainingTime: 0 };
+      let lockout: { locked: boolean; remainingTime?: number } = { locked: false, remainingTime: 0 };
       try {
         lockout = await this.checkAccountLockout(email);
       } catch (redisError) {
