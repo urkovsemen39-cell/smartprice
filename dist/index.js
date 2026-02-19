@@ -207,6 +207,10 @@ app.get('/', (req, res) => {
         }
     });
 });
+// Favicon handler
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
+});
 // Health checks already registered before middleware
 // Swagger API Documentation
 app.use('/api-docs', swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(swagger_1.swaggerSpec, {
