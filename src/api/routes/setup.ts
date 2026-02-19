@@ -39,7 +39,7 @@ router.post('/make-admin', async (req: Request, res: Response) => {
     
     const result = await pool.query(
       `UPDATE users 
-       SET role = 'admin' 
+       SET role = 'owner' 
        WHERE email = $1 
        RETURNING id, email, role`,
       [email.toLowerCase().trim()]
@@ -52,11 +52,11 @@ router.post('/make-admin', async (req: Request, res: Response) => {
     // Помечаем что setup выполнен
     setupCompleted = true;
     
-    logger.info(`Admin role granted to ${result.rows[0].email} - setup endpoint now disabled`);
+    logger.info(`Owner role granted to ${result.rows[0].email} - setup endpoint now disabled`);
     
     res.json({
       success: true,
-      message: 'Admin role granted successfully. This endpoint is now disabled.',
+      message: 'Owner role granted successfully. This endpoint is now disabled.',
       user: result.rows[0]
     });
     
