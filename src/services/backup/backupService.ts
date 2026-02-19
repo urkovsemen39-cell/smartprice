@@ -71,6 +71,190 @@ class BackupService {
   }
 
   /**
+   * Создание полного бэкапа в памяти (для облачных сред)
+   * Возвращает stream для немедленного скачивания
+   */
+  async createInstantBackup(): Promise<{ stream: NodeJS.ReadableStream; filename: string; size: number } | null> {
+    const backupId = this.generateBackupId();
+    const zipFilename = `${backupId}.zip`;
+
+    try {
+      logger.info('Starting instant backup...');
+
+      // Создаем архив в памяти
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      
+      // 1. Бэкап базы данных
+      logger.info('Backing up database...');
+      const dbData = await this.getDatabaseDump();
+      if (dbData) {
+        archive.append(dbData, { name: 'database.sql' });
+      }
+
+      // 2. Бэкап Redis
+      logger.info('Backing up Redis...');
+      const redisData = await this.getRedisData();
+      if (redisData) {
+        archive.append(JSON.stringify(redisData, null, 2), { name: 'redis-data.json' });
+      }
+
+      // 3. Бэкап конфигурации
+      logger.info('Backing up config...');
+      const configData = await this.getConfigData();
+      archive.append(JSON.stringify(configData, null, 2), { name: 'config/environment.json' });
+
+      // 4. Бэкап схемы БД
+      const schemaData = await this.getDatabaseSchema();
+      if (schemaData) {
+        archive.append(schemaData, { name: 'database-schema.sql' });
+      }
+
+      // 5. Метаданные бэкапа
+      const metadata = {
+        backupId,
+        timestamp: new Date().toISOString(),
+        version: '2.0',
+        components: ['database', 'redis', 'config', 'schema'],
+      };
+      archive.append(JSON.stringify(metadata, null, 2), { name: 'backup-metadata.json' });
+
+      // Финализируем архив
+      archive.finalize();
+
+      logger.info('Instant backup created successfully');
+
+      return {
+        stream: archive,
+        filename: zipFilename,
+        size: 0, // Размер неизвестен до завершения
+      };
+    } catch (error: any) {
+      logger.error('Instant backup failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Получение дампа базы данных как строка
+   */
+  private async getDatabaseDump(): Promise<string | null> {
+    try {
+      // Получаем все таблицы
+      const tables = await pool.query(`
+        SELECT tablename 
+        FROM pg_tables 
+        WHERE schemaname = 'public'
+        ORDER BY tablename
+      `);
+
+      let dump = `-- SmartPrice Database Backup\n`;
+      dump += `-- Generated: ${new Date().toISOString()}\n\n`;
+
+      for (const { tablename } of tables.rows) {
+        // Получаем данные таблицы
+        const data = await pool.query(`SELECT * FROM ${tablename}`);
+        
+        if (data.rows.length > 0) {
+          dump += `\n-- Table: ${tablename}\n`;
+          dump += `TRUNCATE TABLE ${tablename} CASCADE;\n`;
+          
+          // Генерируем INSERT statements
+          for (const row of data.rows) {
+            const columns = Object.keys(row);
+            const values = columns.map(col => {
+              const val = row[col];
+              if (val === null) return 'NULL';
+              if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+              if (val instanceof Date) return `'${val.toISOString()}'`;
+              if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+              return val;
+            });
+            
+            dump += `INSERT INTO ${tablename} (${columns.join(', ')}) VALUES (${values.join(', ')});\n`;
+          }
+        }
+      }
+
+      return dump;
+    } catch (error) {
+      logger.error('Database dump failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Получение схемы базы данных
+   */
+  private async getDatabaseSchema(): Promise<string | null> {
+    try {
+      const schema = await pool.query(`
+        SELECT 
+          'CREATE TABLE ' || tablename || ' (' ||
+          string_agg(column_name || ' ' || data_type, ', ') || ');' as create_statement
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+        GROUP BY tablename
+      `);
+
+      return schema.rows.map(r => r.create_statement).join('\n\n');
+    } catch (error) {
+      logger.error('Schema dump failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Получение данных Redis
+   */
+  private async getRedisData(): Promise<Record<string, any> | null> {
+    try {
+      const keys = await redisClient.keys('*');
+      const data: Record<string, any> = {};
+
+      for (const key of keys) {
+        const type = await redisClient.type(key);
+        
+        switch (type) {
+          case 'string':
+            data[key] = await redisClient.get(key);
+            break;
+          case 'hash':
+            data[key] = await redisClient.hGetAll(key);
+            break;
+          case 'list':
+            data[key] = await redisClient.lRange(key, 0, -1);
+            break;
+          case 'set':
+            data[key] = await redisClient.sMembers(key);
+            break;
+          case 'zset':
+            data[key] = await redisClient.zRange(key, 0, -1);
+            break;
+        }
+      }
+
+      return data;
+    } catch (error) {
+      logger.error('Redis data export failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Получение конфигурации (без секретов)
+   */
+  private async getConfigData(): Promise<any> {
+    return {
+      NODE_ENV: env.NODE_ENV,
+      PORT: env.PORT,
+      FRONTEND_URL: env.FRONTEND_URL,
+      EMAIL_PROVIDER: env.EMAIL_PROVIDER,
+      timestamp: new Date().toISOString(),
+      // НЕ включаем секреты!
+    };
+  }
+
+  /**
    * Создание полного бэкапа системы
    */
   async createFullBackup(userId: number): Promise<BackupResult> {

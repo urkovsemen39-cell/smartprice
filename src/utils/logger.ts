@@ -128,21 +128,29 @@ const recentLogs: LogEntry[] = [];
 const MAX_LOGS = 1000;
 
 // Custom transport для сохранения логов в память
-class MemoryTransport extends winston.transports.Stream {
-  log(info: any, callback: () => void) {
-    const logEntry: LogEntry = {
-      timestamp: info.timestamp,
-      level: info.level,
-      message: info.message,
-      meta: info.meta || {},
-    };
+import TransportStream from 'winston-transport';
 
-    recentLogs.push(logEntry);
-    
-    // Ограничиваем размер массива
-    if (recentLogs.length > MAX_LOGS) {
-      recentLogs.shift();
-    }
+class MemoryTransport extends TransportStream {
+  constructor(opts?: any) {
+    super(opts);
+  }
+
+  log(info: any, callback: () => void) {
+    setImmediate(() => {
+      const logEntry: LogEntry = {
+        timestamp: info.timestamp,
+        level: info.level,
+        message: info.message,
+        meta: info.meta || {},
+      };
+
+      recentLogs.push(logEntry);
+      
+      // Ограничиваем размер массива
+      if (recentLogs.length > MAX_LOGS) {
+        recentLogs.shift();
+      }
+    });
 
     callback();
   }

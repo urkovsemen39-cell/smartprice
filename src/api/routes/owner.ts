@@ -620,6 +620,39 @@ router.get('/backup/list', requireOwnerMode, async (req: AuthRequest, res: Respo
 });
 
 /**
+ * Create and Download Instant Backup
+ * GET /api/owner/backup/instant
+ */
+router.get('/backup/instant', requireOwnerMode, async (req: AuthRequest, res: Response) => {
+  try {
+    logger.info('Creating instant backup...');
+    
+    const backup = await backupService.createInstantBackup();
+    
+    if (!backup) {
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+        error: 'Failed to create backup' 
+      });
+    }
+
+    // Устанавливаем headers для скачивания
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${backup.filename}"`);
+    
+    // Отправляем stream
+    backup.stream.pipe(res);
+    
+    logger.info('Instant backup sent successfully');
+  } catch (error) {
+    logger.error('Error creating instant backup:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: 'Failed to create instant backup',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * Create Full Backup
  * POST /api/owner/backup/create
  */
