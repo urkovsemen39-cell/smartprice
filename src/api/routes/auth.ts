@@ -71,7 +71,7 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
 
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'];
-  const sessionId = req.sessionID;
+  const sessionId = req.sessionID || undefined;
 
   const result = await authService.login(email, password, ip, userAgent, sessionId);
   

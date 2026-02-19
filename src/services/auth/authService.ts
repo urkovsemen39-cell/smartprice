@@ -208,8 +208,17 @@ export class AuthService {
 
   async login(email: string, password: string, ip?: string, userAgent?: string, sessionId?: string): Promise<AuthTokens> {
     try {
+      logger.info(`Login attempt for email: ${email}`);
+      
       // Проверяем блокировку аккаунта
-      const lockout = await this.checkAccountLockout(email);
+      let lockout = { locked: false, remainingTime: 0 };
+      try {
+        lockout = await this.checkAccountLockout(email);
+      } catch (redisError) {
+        logger.error('Redis error in checkAccountLockout:', redisError);
+        // Продолжаем без проверки блокировки если Redis недоступен
+      }
+      
       if (lockout.locked) {
         const minutes = Math.ceil((lockout.remainingTime || 0) / 60);
         throw new AuthenticationError(`Account temporarily locked. Try again in ${minutes} minutes`);
@@ -222,7 +231,11 @@ export class AuthService {
       );
 
       if (result.rows.length === 0) {
-        await this.recordFailedLogin(email);
+        try {
+          await this.recordFailedLogin(email);
+        } catch (redisError) {
+          logger.error('Redis error in recordFailedLogin:', redisError);
+        }
         await this.logLoginAttempt(email, false, ip, userAgent);
         
         await auditService.log({
@@ -241,7 +254,12 @@ export class AuthService {
       const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
       if (!isValidPassword) {
-        const attempts = await this.recordFailedLogin(email);
+        let attempts = 0;
+        try {
+          attempts = await this.recordFailedLogin(email);
+        } catch (redisError) {
+          logger.error('Redis error in recordFailedLogin:', redisError);
+        }
         await this.logLoginAttempt(email, false, ip, userAgent);
         
         await auditService.log({
@@ -253,20 +271,31 @@ export class AuthService {
         });
         
         const remaining = AUTH.MAX_LOGIN_ATTEMPTS - attempts;
-        if (remaining > 0) {
+        if (remaining > 0 && attempts > 0) {
           throw new AuthenticationError(`Invalid email or password. ${remaining} attempts remaining`);
-        } else {
+        } else if (attempts >= AUTH.MAX_LOGIN_ATTEMPTS) {
           throw new AuthenticationError('Account temporarily locked due to too many failed attempts');
+        } else {
+          throw new AuthenticationError('Invalid email or password');
         }
       }
 
       // Успешный вход - сбрасываем счетчик
-      await this.resetLoginAttempts(email);
+      try {
+        await this.resetLoginAttempts(email);
+      } catch (redisError) {
+        logger.error('Redis error in resetLoginAttempts:', redisError);
+      }
       await this.logLoginAttempt(email, true, ip, userAgent);
 
       // Создание сессии
       if (sessionId && ip && userAgent) {
-        await sessionService.createSession(user.id, sessionId, ip, userAgent, user.email);
+        try {
+          await sessionService.createSession(user.id, sessionId, ip, userAgent, user.email);
+        } catch (sessionError) {
+          logger.error('Session creation error:', sessionError);
+          // Продолжаем без сессии
+        }
       }
 
       // Логирование в audit
@@ -281,6 +310,8 @@ export class AuthService {
       // Генерируем токены
       const accessToken = this.generateAccessToken(user.id, user.email_verified, user.role);
       const refreshToken = await refreshTokenService.generateRefreshToken(user.id, ip, userAgent);
+
+      logger.info(`Login successful for user: ${user.id}`);
 
       return {
         accessToken,
