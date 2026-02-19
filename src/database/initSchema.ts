@@ -345,7 +345,27 @@ async function runMigrations() {
     `);
     logger.info('  ✓ totp_secret column added');
     
-    // Миграция 3: ПРИНУДИТЕЛЬНОЕ назначение роли owner (выполняется ВСЕГДА)
+    // Миграция 3: Обновление CHECK constraint для роли
+    logger.info('  → Updating role check constraint...');
+    try {
+      // Удаляем старый constraint
+      await db.query(`
+        ALTER TABLE users 
+        DROP CONSTRAINT IF EXISTS users_role_check;
+      `);
+      
+      // Создаем новый constraint без 'admin'
+      await db.query(`
+        ALTER TABLE users 
+        ADD CONSTRAINT users_role_check 
+        CHECK (role IN ('user', 'moderator', 'owner'));
+      `);
+      logger.info('  ✓ Role check constraint updated');
+    } catch (constraintError) {
+      logger.error('  ✗ Failed to update constraint:', constraintError);
+    }
+    
+    // Миграция 4: ПРИНУДИТЕЛЬНОЕ назначение роли owner (выполняется ВСЕГДА)
     logger.info('  → FORCE setting owner role for semenbrut007@yandex.ru...');
     try {
       const ownerResult = await db.query(`
