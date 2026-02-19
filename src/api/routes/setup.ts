@@ -4,12 +4,23 @@ import logger from '../../utils/logger';
 
 const router = Router();
 
+// Флаг - endpoint сработал только один раз
+let setupCompleted = false;
+
 /**
  * Временный endpoint для назначения админа
- * После использования удалить!
+ * Работает ТОЛЬКО ОДИН РАЗ и только для конкретного email
  */
 router.post('/make-admin', async (req: Request, res: Response) => {
   try {
+    // Проверка - уже использован?
+    if (setupCompleted) {
+      return res.status(403).json({ 
+        error: 'Setup already completed',
+        code: 'SETUP_COMPLETED'
+      });
+    }
+    
     const { email, secret } = req.body;
     
     // Простая защита - требуем секретный ключ
@@ -17,8 +28,13 @@ router.post('/make-admin', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Invalid secret' });
     }
     
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+    // Только для конкретного email
+    const allowedEmail = 'semenbrut007@yandex.ru';
+    if (!email || email.toLowerCase().trim() !== allowedEmail) {
+      return res.status(403).json({ 
+        error: 'Unauthorized email',
+        code: 'UNAUTHORIZED_EMAIL'
+      });
     }
     
     const result = await pool.query(
@@ -33,11 +49,14 @@ router.post('/make-admin', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    logger.info(`Admin role granted to ${result.rows[0].email}`);
+    // Помечаем что setup выполнен
+    setupCompleted = true;
+    
+    logger.info(`Admin role granted to ${result.rows[0].email} - setup endpoint now disabled`);
     
     res.json({
       success: true,
-      message: 'Admin role granted successfully',
+      message: 'Admin role granted successfully. This endpoint is now disabled.',
       user: result.rows[0]
     });
     
