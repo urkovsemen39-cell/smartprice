@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS ip_blocks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_blocks_ip ON ip_blocks(ip_address);
-CREATE INDEX IF NOT EXISTS idx_ip_blocks_active ON ip_blocks(ip_address, blocked_until) WHERE permanent = TRUE OR blocked_until > NOW();
+CREATE INDEX IF NOT EXISTS idx_ip_blocks_active ON ip_blocks(ip_address, blocked_until) WHERE permanent = TRUE;
 
 -- Anomaly detections table
 CREATE TABLE IF NOT EXISTS anomaly_detections (
