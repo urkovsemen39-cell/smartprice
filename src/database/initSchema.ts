@@ -337,6 +337,14 @@ async function runMigrations() {
     `);
     logger.info('  ✓ refresh_tokens columns added');
     
+    // Миграция 2: Добавление колонки totp_secret в users
+    logger.info('  → Adding totp_secret column to users...');
+    await db.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(255);
+    `);
+    logger.info('  ✓ totp_secret column added');
+    
   } catch (error) {
     logger.error('Migration error:', error);
     // Не бросаем ошибку, продолжаем работу
