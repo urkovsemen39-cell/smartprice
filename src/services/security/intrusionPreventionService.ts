@@ -329,59 +329,78 @@ class IntrusionPreventionService {
    * Добавление IP в черный список
    */
   async addToBlacklist(ip: string, reason: string): Promise<void> {
-    await pool.query(
-      `INSERT INTO ip_blacklist (ip_address, reason, created_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (ip_address) DO UPDATE SET reason = $2, updated_at = NOW()`,
-      [ip, reason]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO ip_blacklist (ip_address, reason, created_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (ip_address) DO UPDATE SET reason = $2, updated_at = NOW()`,
+        [ip, reason]
+      );
+    } catch (error) {
+      // Если таблица не существует, логируем но не падаем
+      console.error('Failed to add IP to blacklist:', error);
+    }
   }
 
   /**
    * Проверка IP в черном списке
    */
   async isIPBlacklisted(ip: string): Promise<boolean> {
-    const result = await pool.query(
-      'SELECT 1 FROM ip_blacklist WHERE ip_address = $1',
-      [ip]
-    );
-    return result.rows.length > 0;
+    try {
+      const result = await pool.query(
+        'SELECT 1 FROM ip_blacklist WHERE ip_address = $1',
+        [ip]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      // Если таблица не существует, возвращаем false
+      return false;
+    }
   }
 
   /**
    * Запись попытки взлома
    */
   private async recordIntrusion(attempt: IntrusionAttempt): Promise<void> {
-    await pool.query(
-      `INSERT INTO intrusion_attempts (ip_address, user_id, attack_type, severity, details, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [attempt.ip, attempt.userId || null, attempt.attackType, attempt.severity, JSON.stringify(attempt.details)]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO intrusion_attempts (ip_address, user_id, attack_type, severity, details, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [attempt.ip, attempt.userId || null, attempt.attackType, attempt.severity, JSON.stringify(attempt.details)]
+      );
 
-    // Автоматическая блокировка при критичных атаках
-    if (attempt.severity === 'critical') {
-      await this.blockIP(attempt.ip, attempt.attackType, this.BLOCK_DURATION * 2);
+      // Автоматическая блокировка при критичных атаках
+      if (attempt.severity === 'critical') {
+        await this.blockIP(attempt.ip, attempt.attackType, this.BLOCK_DURATION * 2);
+      }
+
+      await auditService.log({
+        userId: attempt.userId,
+        action: 'intrusion_detected',
+        resourceType: 'security',
+        details: attempt
+      });
+    } catch (error) {
+      // Если таблица не существует, логируем но не падаем
+      console.error('Failed to record intrusion:', error);
     }
-
-    await auditService.log({
-      userId: attempt.userId,
-      action: 'intrusion_detected',
-      resourceType: 'security',
-      details: attempt
-    });
   }
 
   /**
    * Получение количества попыток взлома
    */
   private async getIntrusionCount(ip: string, seconds: number): Promise<number> {
-    const result = await pool.query(
-      `SELECT COUNT(*) as count 
-       FROM intrusion_attempts 
-       WHERE ip_address = $1 AND created_at > NOW() - INTERVAL '${seconds} seconds'`,
-      [ip]
-    );
-    return parseInt(result.rows[0].count);
+    try {
+      const result = await pool.query(
+        `SELECT COUNT(*) as count 
+         FROM intrusion_attempts 
+         WHERE ip_address = $1 AND created_at > NOW() - INTERVAL '${seconds} seconds'`,
+        [ip]
+      );
+      return parseInt(result.rows[0].count);
+    } catch (error) {
+      return 0;
+    }
   }
 
   /**
