@@ -247,8 +247,13 @@ class WAFMiddleware {
         const whitelistedPaths = [
           '/health',
           '/api/health',
+          '/api/v1/health',
           '/metrics',
           '/api/metrics',
+          '/api/v1/search',
+          '/api/v1/analytics/popular-queries',
+          '/api/v1/analytics/click',
+          '/api/v1/features/environment',
           '/',
           '/favicon.ico'
         ];
