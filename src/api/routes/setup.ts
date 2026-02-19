@@ -67,6 +67,48 @@ router.post('/make-admin', async (req: Request, res: Response) => {
 });
 
 /**
+ * Принудительное изменение роли на owner
+ */
+router.post('/force-owner', async (req: Request, res: Response) => {
+  try {
+    const { email, secret } = req.body;
+    
+    if (secret !== 'force-owner-2026') {
+      return res.status(403).json({ error: 'Invalid secret' });
+    }
+    
+    if (email !== 'semenbrut007@yandex.ru') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    // Принудительно меняем роль
+    const result = await pool.query(
+      `UPDATE users 
+       SET role = 'owner' 
+       WHERE email = $1 
+       RETURNING id, email, role, totp_secret IS NOT NULL as has_totp`,
+      [email]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    logger.info(`FORCE: Owner role set for ${result.rows[0].email}`);
+    
+    res.json({
+      success: true,
+      message: 'Role changed to owner. Please logout and login again.',
+      user: result.rows[0]
+    });
+    
+  } catch (error) {
+    logger.error('Force owner error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * Проверка текущей роли в базе данных
  */
 router.post('/check-role', async (req: Request, res: Response) => {
