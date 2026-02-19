@@ -184,11 +184,11 @@ class BackupService {
     try {
       const schema = await pool.query(`
         SELECT 
-          'CREATE TABLE ' || tablename || ' (' ||
+          'CREATE TABLE ' || table_name || ' (' ||
           string_agg(column_name || ' ' || data_type, ', ') || ');' as create_statement
         FROM information_schema.columns
         WHERE table_schema = 'public'
-        GROUP BY tablename
+        GROUP BY table_name
       `);
 
       return schema.rows.map(r => r.create_statement).join('\n\n');
