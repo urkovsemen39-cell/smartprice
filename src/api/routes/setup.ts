@@ -137,4 +137,56 @@ router.post('/check-role', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Фикс constraint для owner роли
+ */
+router.post('/fix-owner-constraint', async (req: Request, res: Response) => {
+  try {
+    const { secret } = req.body;
+    
+    if (secret !== 'fix-constraint-2026') {
+      return res.status(403).json({ error: 'Invalid secret' });
+    }
+    
+    // Удаляем старый constraint
+    await pool.query(`
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+    `);
+    
+    // Создаем новый с owner
+    await pool.query(`
+      ALTER TABLE users ADD CONSTRAINT users_role_check 
+      CHECK (role IN ('user', 'admin', 'moderator', 'owner'));
+    `);
+    
+    // Устанавливаем роль owner
+    const result = await pool.query(`
+      UPDATE users 
+      SET role = 'owner',
+          email_verified = true,
+          email_verified_at = NOW(),
+          account_locked = false,
+          locked_at = NULL,
+          lock_reason = NULL
+      WHERE email = 'semenbrut007@yandex.ru'
+      RETURNING id, email, role, email_verified, account_locked;
+    `);
+    
+    logger.info('Owner constraint fixed and role set');
+    
+    res.json({
+      success: true,
+      message: 'Constraint fixed, owner role set, account verified and unlocked',
+      user: result.rows[0]
+    });
+    
+  } catch (error) {
+    logger.error('Fix constraint error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default router;
