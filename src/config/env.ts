@@ -125,9 +125,9 @@ class EnvValidator {
       // Redis
       REDIS_URL: this.getString('REDIS_URL', false, 'redis://localhost:6379'),
       
-      // Secrets
-      JWT_SECRET: this.getString('JWT_SECRET', isProduction),
-      SESSION_SECRET: this.getString('SESSION_SECRET', isProduction),
+      // Secrets - НЕ требуем в production, сгенерируем ниже если нужно
+      JWT_SECRET: this.getString('JWT_SECRET', false),
+      SESSION_SECRET: this.getString('SESSION_SECRET', false),
       MASTER_ENCRYPTION_KEY: this.getString('MASTER_ENCRYPTION_KEY'),
       
       // Email
@@ -162,51 +162,33 @@ class EnvValidator {
       ADMITAD_CAMPAIGN_ID: this.getString('ADMITAD_CAMPAIGN_ID'),
     };
 
-    // Production-specific validations
-    if (isProduction) {
-      // Генерируем секреты если не установлены даже в production
-      const crypto = require('crypto');
-      const logger = require('../utils/logger').default;
-      
-      if (!config.JWT_SECRET || config.JWT_SECRET.length < 32) {
-        logger.warn('⚠️  WARNING: JWT_SECRET not set or too short in production, generating random secret');
-        config.JWT_SECRET = crypto.randomBytes(64).toString('hex');
-        logger.warn('Generated JWT_SECRET (save this to environment): ' + config.JWT_SECRET);
-      }
-      
-      if (!config.SESSION_SECRET || config.SESSION_SECRET.length < 32) {
-        logger.warn('⚠️  WARNING: SESSION_SECRET not set or too short in production, generating random secret');
-        config.SESSION_SECRET = crypto.randomBytes(64).toString('hex');
-        logger.warn('Generated SESSION_SECRET (save this to environment): ' + config.SESSION_SECRET);
-      }
-      
-      // HTTPS enforcement warning
-      if (!config.FRONTEND_URL.startsWith('https://')) {
-        logger.warn('⚠️  WARNING: FRONTEND_URL should use HTTPS in production!');
+    // Генерируем секреты если не установлены или слишком короткие
+    const crypto = require('crypto');
+    
+    if (!config.JWT_SECRET || config.JWT_SECRET.length < 32) {
+      config.JWT_SECRET = crypto.randomBytes(64).toString('hex');
+      console.warn('⚠️  JWT_SECRET not set or too short, generated random secret');
+      if (isProduction) {
+        console.warn('Generated JWT_SECRET (save this to environment): ' + config.JWT_SECRET);
       }
     }
-
-    // Development: Generate secure secrets if not provided
-    if (!isProduction) {
-      const logger = require('../utils/logger').default;
-      if (!config.JWT_SECRET) {
-        const crypto = require('crypto');
-        config.JWT_SECRET = crypto.randomBytes(32).toString('hex');
-        logger.warn('JWT_SECRET not set, generated random secret for development');
-        logger.warn('Add this to your .env file: JWT_SECRET=' + config.JWT_SECRET);
+    
+    if (!config.SESSION_SECRET || config.SESSION_SECRET.length < 32) {
+      config.SESSION_SECRET = crypto.randomBytes(64).toString('hex');
+      console.warn('⚠️  SESSION_SECRET not set or too short, generated random secret');
+      if (isProduction) {
+        console.warn('Generated SESSION_SECRET (save this to environment): ' + config.SESSION_SECRET);
       }
-      if (!config.SESSION_SECRET) {
-        const crypto = require('crypto');
-        config.SESSION_SECRET = crypto.randomBytes(32).toString('hex');
-        logger.warn('SESSION_SECRET not set, generated random secret for development');
-        logger.warn('Add this to your .env file: SESSION_SECRET=' + config.SESSION_SECRET);
-      }
+    }
+    
+    // HTTPS enforcement warning
+    if (isProduction && !config.FRONTEND_URL.startsWith('https://')) {
+      console.warn('⚠️  WARNING: FRONTEND_URL should use HTTPS in production!');
     }
 
     if (this.errors.length > 0) {
-      const logger = require('../utils/logger').default;
-      logger.error('Environment validation failed:');
-      this.errors.forEach(error => logger.error(`   - ${error}`));
+      console.error('Environment validation failed:');
+      this.errors.forEach(error => console.error(`   - ${error}`));
       throw new Error('Invalid environment configuration');
     }
 

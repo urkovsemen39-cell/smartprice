@@ -20,8 +20,8 @@ const options: swaggerJsdoc.Options = {
     servers: [
       {
         url: env.NODE_ENV === 'production' 
-          ? 'https://api.smartprice.ru/api/v1'
-          : 'http://localhost:3001/api/v1',
+          ? 'https://smartprice-production.up.railway.app/api/v1'
+          : `http://localhost:${env.PORT}/api/v1`,
         description: env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
       },
     ],
