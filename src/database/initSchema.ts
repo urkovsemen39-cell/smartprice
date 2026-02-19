@@ -22,6 +22,20 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_locked ON users(account_locked);
 
+-- Two-factor authentication table
+CREATE TABLE IF NOT EXISTS two_factor_auth (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  secret VARCHAR(255) NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE,
+  backup_codes TEXT[],
+  created_at TIMESTAMP DEFAULT NOW(),
+  last_used_at TIMESTAMP,
+  UNIQUE(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_two_factor_user ON two_factor_auth(user_id);
+
 -- Login attempts table
 CREATE TABLE IF NOT EXISTS login_attempts (
   id SERIAL PRIMARY KEY,
