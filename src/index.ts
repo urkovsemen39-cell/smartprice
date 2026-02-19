@@ -34,6 +34,7 @@ import securityRoutes from './api/routes/security';
 import ownerRoutes from './api/routes/owner';
 import featuresRoutes from './api/routes/features';
 import setupRoutes from './api/routes/setup';
+import totpSetupRoutes from './api/routes/totp-setup';
 
 // Jobs
 import priceCheckJob from './services/jobs/priceCheckJob';
@@ -143,6 +144,7 @@ const publicPaths = [
   '/api/v1/auth/login',
   '/api/v1/auth/register',
   '/api/v1/setup',
+  '/api/v1/totp-setup',
   '/',
   '/favicon.ico',
   '/api-docs'
@@ -220,7 +222,8 @@ const generalLimiter = rateLimit({
       '/api/v1/suggestions',
       '/api/v1/auth/login',
       '/api/v1/auth/register',
-      '/api/v1/setup'
+      '/api/v1/setup',
+      '/api/v1/totp-setup'
     ];
     return publicApiPaths.some(path => req.path === path || req.path.startsWith(path + '/'));
   }
@@ -341,6 +344,7 @@ v1Router.use('/price-history', priceHistoryRoutes);
 v1Router.use('/compare', compareLimiter, compareRoutes);
 v1Router.use('/features', featuresRoutes);
 v1Router.use('/setup', setupRoutes);
+v1Router.use('/totp-setup', totpSetupRoutes);
 
 app.use('/api/v1', v1Router);
 
