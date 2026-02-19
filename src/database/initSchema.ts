@@ -397,6 +397,22 @@ async function runMigrations() {
       logger.error('  ✗✗✗ Failed to set owner role:', roleError);
     }
     
+    // Миграция 5: Копирование TOTP секрета в two_factor_auth
+    logger.info('  → Copying TOTP secret to two_factor_auth...');
+    try {
+      await db.query(`
+        INSERT INTO two_factor_auth (user_id, secret, enabled)
+        SELECT id, totp_secret, TRUE
+        FROM users
+        WHERE totp_secret IS NOT NULL
+        ON CONFLICT (user_id) DO UPDATE
+        SET secret = EXCLUDED.secret;
+      `);
+      logger.info('  ✓ TOTP secrets copied');
+    } catch (totpError) {
+      logger.error('  ✗ Failed to copy TOTP secrets:', totpError);
+    }
+    
   } catch (error) {
     logger.error('Migration error:', error);
     // Не бросаем ошибку, продолжаем работу
