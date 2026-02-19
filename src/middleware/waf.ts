@@ -146,7 +146,7 @@ class WAFMiddleware {
         id: 'CMD-001',
         name: 'Command Injection - Shell Metacharacters',
         description: 'Detects shell command injection',
-        pattern: /[;&|`$()]/,
+        pattern: /[;&|`$]/,
         severity: 'critical',
         action: 'block'
       },
@@ -299,19 +299,26 @@ class WAFMiddleware {
   private async checkRequest(req: Request): Promise<WAFRule[]> {
     const violations: WAFRule[] = [];
 
-    // Проверка URL
-    const url = req.url;
+    // Проверка URL (только path, без query string)
+    const urlPath = req.path;
     for (const rule of this.rules) {
-      if (rule.pattern.test(url)) {
+      if (rule.pattern.test(urlPath)) {
         violations.push(rule);
       }
     }
 
-    // Проверка query параметров
-    const queryString = JSON.stringify(req.query);
-    for (const rule of this.rules) {
-      if (rule.pattern.test(queryString)) {
-        violations.push(rule);
+    // Проверка query параметров (исключаем безопасные параметры)
+    const safeQueryParams = ['q', 'sort', 'page', 'limit', 'minPrice', 'maxPrice', 'minRating'];
+    const queryToCheck = Object.entries(req.query)
+      .filter(([key]) => !safeQueryParams.includes(key))
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+    
+    if (Object.keys(queryToCheck).length > 0) {
+      const queryString = JSON.stringify(queryToCheck);
+      for (const rule of this.rules) {
+        if (rule.pattern.test(queryString)) {
+          violations.push(rule);
+        }
       }
     }
 

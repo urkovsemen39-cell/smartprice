@@ -46,10 +46,13 @@ async function connectRedis() {
     try {
         await redisClient.connect();
         gracefulDegradation_1.GracefulDegradation.setRedisStatus(true);
+        logger.info('✅ Redis connected successfully');
     }
     catch (error) {
         logger.error('❌ Failed to connect to Redis:', error);
+        logger.warn('⚠️  Application will continue with in-memory cache fallback');
         gracefulDegradation_1.GracefulDegradation.setRedisStatus(false);
+        // Don't throw - allow app to continue with degraded functionality
     }
 }
 exports.default = redisClient;

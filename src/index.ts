@@ -32,6 +32,7 @@ import apiKeysRoutes from './api/routes/apiKeys';
 import adminRoutes from './api/routes/admin';
 import securityRoutes from './api/routes/security';
 import ownerRoutes from './api/routes/owner';
+import featuresRoutes from './api/routes/features';
 
 // Jobs
 import priceCheckJob from './services/jobs/priceCheckJob';
@@ -281,6 +282,7 @@ v1Router.use('/analytics', analyticsRoutes);
 v1Router.use('/suggestions', suggestionsLimiter, suggestionsRoutes);
 v1Router.use('/price-history', priceHistoryRoutes);
 v1Router.use('/compare', compareLimiter, compareRoutes);
+v1Router.use('/features', featuresRoutes);
 
 app.use('/api/v1', v1Router);
 
