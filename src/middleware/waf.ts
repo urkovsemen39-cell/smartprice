@@ -265,7 +265,7 @@ class WAFMiddleware {
 
         // Проверяем точное совпадение или начало пути
         const isWhitelisted = whitelistedPaths.some(path => {
-          return req.path === path || req.path.startsWith(path + '/') || req.path.startsWith(path + '?');
+          return req.path === path || req.path.startsWith(path + '/');
         });
 
         if (isWhitelisted) {

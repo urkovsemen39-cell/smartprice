@@ -151,7 +151,7 @@ const skipForPublicPaths = (middleware: any) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Проверяем точное совпадение или начало пути
     const isPublic = publicPaths.some(path => {
-      return req.path === path || req.path.startsWith(path + '/') || req.path.startsWith(path + '?');
+      return req.path === path || req.path.startsWith(path + '/');
     });
     
     if (isPublic) {
@@ -219,7 +219,7 @@ const generalLimiter = rateLimit({
       '/api/v1/auth/login',
       '/api/v1/auth/register'
     ];
-    return publicApiPaths.some(path => req.path === path || req.path.startsWith(path + '/') || req.path.startsWith(path + '?'));
+    return publicApiPaths.some(path => req.path === path || req.path.startsWith(path + '/'));
   }
 });
 

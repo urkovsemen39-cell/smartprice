@@ -33,7 +33,7 @@ export const ddosProtection = async (req: Request, res: Response, next: NextFunc
 
     // Проверяем точное совпадение или начало пути
     const isWhitelisted = whitelistedPaths.some(path => {
-      return endpoint === path || endpoint.startsWith(path + '/') || endpoint.startsWith(path + '?');
+      return endpoint === path || endpoint.startsWith(path + '/');
     });
 
     if (isWhitelisted) {
