@@ -12,7 +12,7 @@ import { databaseMonitoringService } from '../../services/monitoring/databaseMon
 import { advancedCacheService } from '../../services/cache/advancedCacheService';
 import { queueService } from '../../services/queue/queueService';
 import { backupService } from '../../services/backup/backupService';
-import logger from '../../utils/logger';
+import logger, { getRecentLogs } from '../../utils/logger';
 import { HTTP_STATUS } from '../../config/constants';
 
 const router = Router();
@@ -521,6 +521,29 @@ router.get('/audit/logs', requireOwnerMode, async (req: AuthRequest, res: Respon
   } catch (error) {
     logger.error('Error getting audit logs:', error);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get audit logs' });
+  }
+});
+
+/**
+ * System Logs (Winston logs from memory)
+ * GET /api/owner/logs/system
+ */
+router.get('/logs/system', requireOwnerMode, async (req: AuthRequest, res: Response) => {
+  try {
+    const { limit = 100, level } = req.query;
+    
+    const logs = getRecentLogs(Number(limit), level as string);
+    
+    res.json({
+      logs,
+      total: logs.length,
+    });
+  } catch (error) {
+    logger.error('Error getting system logs:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: 'Failed to get system logs',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

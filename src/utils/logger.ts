@@ -116,4 +116,50 @@ export const logAPI = (message: string, meta?: Record<string, unknown>) => {
   logger.info(`[API] ${message}`, meta);
 };
 
+// In-memory log storage для owner панели (последние 1000 логов)
+interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  meta?: any;
+}
+
+const recentLogs: LogEntry[] = [];
+const MAX_LOGS = 1000;
+
+// Custom transport для сохранения логов в память
+class MemoryTransport extends winston.transports.Stream {
+  log(info: any, callback: () => void) {
+    const logEntry: LogEntry = {
+      timestamp: info.timestamp,
+      level: info.level,
+      message: info.message,
+      meta: info.meta || {},
+    };
+
+    recentLogs.push(logEntry);
+    
+    // Ограничиваем размер массива
+    if (recentLogs.length > MAX_LOGS) {
+      recentLogs.shift();
+    }
+
+    callback();
+  }
+}
+
+// Добавляем memory transport
+logger.add(new MemoryTransport());
+
+// Функция для получения логов
+export const getRecentLogs = (limit: number = 100, level?: string): LogEntry[] => {
+  let logs = [...recentLogs].reverse(); // Новые сначала
+  
+  if (level) {
+    logs = logs.filter(log => log.level === level);
+  }
+  
+  return logs.slice(0, limit);
+};
+
 export default logger;
