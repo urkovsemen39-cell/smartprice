@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
-  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator', 'owner')),
+  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'moderator', 'owner')),
   email_verified BOOLEAN DEFAULT FALSE,
   email_verified_at TIMESTAMP,
   account_locked BOOLEAN DEFAULT false,
@@ -345,16 +345,18 @@ async function runMigrations() {
     `);
     logger.info('  ✓ totp_secret column added');
     
-    // Миграция 3: Назначение роли owner для главного админа
+    // Миграция 3: Назначение роли owner для главного админа (принудительно)
     logger.info('  → Setting owner role...');
     const ownerResult = await db.query(`
       UPDATE users 
       SET role = 'owner' 
-      WHERE email = 'semenbrut007@yandex.ru' AND role != 'owner'
+      WHERE email = 'semenbrut007@yandex.ru'
       RETURNING id, email, role;
     `);
     if (ownerResult.rowCount && ownerResult.rowCount > 0) {
       logger.info(`  ✓ Owner role granted to ${ownerResult.rows[0].email}`);
+    } else {
+      logger.warn('  ⚠ User not found for owner role assignment');
     }
     
   } catch (error) {

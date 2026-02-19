@@ -4,7 +4,7 @@ import logger from '../../utils/logger';
 
 const router = Router();
 
-// Флаг - endpoint сработал только один раз
+// Флаг - endpoint сработал только один раз (сброшен для повторного использования)
 let setupCompleted = false;
 
 /**
