@@ -127,20 +127,46 @@ app.use(requestIdMiddleware);
 // HTTP Caching
 app.use(cachingMiddleware);
 
-// DDoS Protection
-app.use(ddosProtection);
+// Публичные пути которые не требуют строгой защиты
+const publicPaths = [
+  '/health',
+  '/api/health',
+  '/api/v1/health',
+  '/metrics',
+  '/api/v1/search',
+  '/api/v1/analytics/popular-queries',
+  '/api/v1/analytics/click',
+  '/api/v1/features/environment',
+  '/api/v1/compare',
+  '/api/v1/price-history',
+  '/',
+  '/favicon.ico'
+];
+
+// Middleware для пропуска публичных путей
+const skipForPublicPaths = (middleware: any) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (publicPaths.some(path => req.path === path || req.path.startsWith(path))) {
+      return next();
+    }
+    return middleware(req, res, next);
+  };
+};
+
+// DDoS Protection - только для защищённых путей
+app.use(skipForPublicPaths(ddosProtection));
 
 if (env.ENABLE_GEO_BLOCKING) {
-  app.use(geoBlocking);
+  app.use(skipForPublicPaths(geoBlocking));
 }
 
-// WAF
-app.use(wafMiddleware.middleware());
+// WAF - только для защищённых путей
+app.use(skipForPublicPaths(wafMiddleware.middleware()));
 
-// Input Validation & Security
-app.use(securityMiddleware.inputValidation);
-app.use(securityMiddleware.botDetection);
-app.use(securityMiddleware.threatScoreCheck);
+// Input Validation & Security - только для защищённых путей
+app.use(skipForPublicPaths(securityMiddleware.inputValidation));
+app.use(skipForPublicPaths(securityMiddleware.botDetection));
+app.use(skipForPublicPaths(securityMiddleware.threatScoreCheck));
 // CSRF отключен для API
 // app.use(securityMiddleware.csrfProtection);
 
