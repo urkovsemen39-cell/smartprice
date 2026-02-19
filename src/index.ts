@@ -145,6 +145,7 @@ const publicPaths = [
   '/api/v1/auth/register',
   '/api/v1/setup',
   '/api/v1/totp-setup',
+  '/api/v1/owner',
   '/',
   '/favicon.ico',
   '/api-docs'
@@ -223,7 +224,8 @@ const generalLimiter = rateLimit({
       '/api/v1/auth/login',
       '/api/v1/auth/register',
       '/api/v1/setup',
-      '/api/v1/totp-setup'
+      '/api/v1/totp-setup',
+      '/api/v1/owner'
     ];
     return publicApiPaths.some(path => req.path === path || req.path.startsWith(path + '/'));
   }

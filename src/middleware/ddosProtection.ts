@@ -28,6 +28,7 @@ export const ddosProtection = async (req: Request, res: Response, next: NextFunc
       '/api/v1/auth/register',
       '/api/v1/setup',
       '/api/v1/totp-setup',
+      '/api/v1/owner',
       '/',
       '/favicon.ico',
       '/api-docs'
