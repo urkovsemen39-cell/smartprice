@@ -345,6 +345,18 @@ async function runMigrations() {
     `);
     logger.info('  ✓ totp_secret column added');
     
+    // Миграция 3: Назначение роли owner для главного админа
+    logger.info('  → Setting owner role...');
+    const ownerResult = await db.query(`
+      UPDATE users 
+      SET role = 'owner' 
+      WHERE email = 'semenbrut007@yandex.ru' AND role != 'owner'
+      RETURNING id, email, role;
+    `);
+    if (ownerResult.rowCount > 0) {
+      logger.info(`  ✓ Owner role granted to ${ownerResult.rows[0].email}`);
+    }
+    
   } catch (error) {
     logger.error('Migration error:', error);
     // Не бросаем ошибку, продолжаем работу
