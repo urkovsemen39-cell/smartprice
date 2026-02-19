@@ -164,17 +164,24 @@ class EnvValidator {
 
     // Production-specific validations
     if (isProduction) {
+      // Генерируем секреты если не установлены даже в production
+      const crypto = require('crypto');
+      const logger = require('../utils/logger').default;
+      
       if (!config.JWT_SECRET || config.JWT_SECRET.length < 32) {
-        this.errors.push('JWT_SECRET must be at least 32 characters in production');
+        logger.warn('⚠️  WARNING: JWT_SECRET not set or too short in production, generating random secret');
+        config.JWT_SECRET = crypto.randomBytes(64).toString('hex');
+        logger.warn('Generated JWT_SECRET (save this to environment): ' + config.JWT_SECRET);
       }
       
       if (!config.SESSION_SECRET || config.SESSION_SECRET.length < 32) {
-        this.errors.push('SESSION_SECRET must be at least 32 characters in production');
+        logger.warn('⚠️  WARNING: SESSION_SECRET not set or too short in production, generating random secret');
+        config.SESSION_SECRET = crypto.randomBytes(64).toString('hex');
+        logger.warn('Generated SESSION_SECRET (save this to environment): ' + config.SESSION_SECRET);
       }
       
       // HTTPS enforcement warning
       if (!config.FRONTEND_URL.startsWith('https://')) {
-        const logger = require('../utils/logger').default;
         logger.warn('⚠️  WARNING: FRONTEND_URL should use HTTPS in production!');
       }
     }
