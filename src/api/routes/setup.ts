@@ -66,4 +66,33 @@ router.post('/make-admin', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Проверка текущей роли в базе данных
+ */
+router.post('/check-role', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    
+    const result = await pool.query(
+      `SELECT id, email, role, totp_secret IS NOT NULL as has_totp 
+       FROM users 
+       WHERE email = $1`,
+      [email.toLowerCase().trim()]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      success: true,
+      user: result.rows[0]
+    });
+    
+  } catch (error) {
+    logger.error('Check role error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
