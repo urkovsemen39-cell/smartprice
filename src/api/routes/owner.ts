@@ -109,25 +109,35 @@ router.get('/dashboard', requireOwnerMode, async (req: AuthRequest, res: Respons
     `);
 
     // Статистика активности
-    const activityStats = await pool.query(`
-      SELECT 
-        COUNT(*) as total_searches,
-        COUNT(DISTINCT user_id) as active_users,
-        COUNT(*) FILTER (WHERE searched_at > NOW() - INTERVAL '24 hours') as searches_24h
-      FROM search_history
-      WHERE searched_at > NOW() - INTERVAL '7 days'
-    `);
+    let activityStats;
+    try {
+      activityStats = await pool.query(`
+        SELECT 
+          COUNT(*) as total_searches,
+          COUNT(DISTINCT user_id) as active_users,
+          COUNT(*) FILTER (WHERE searched_at > NOW() - INTERVAL '24 hours') as searches_24h
+        FROM search_history
+        WHERE searched_at > NOW() - INTERVAL '7 days'
+      `);
+    } catch (error) {
+      activityStats = { rows: [{ total_searches: 0, active_users: 0, searches_24h: 0 }] };
+    }
 
     // Статистика безопасности
-    const securityStats = await pool.query(`
-      SELECT 
-        COUNT(*) as total_events,
-        COUNT(*) FILTER (WHERE severity = 'critical') as critical_events,
-        COUNT(*) FILTER (WHERE severity = 'high') as high_events,
-        COUNT(*) FILTER (WHERE resolved = false) as unresolved_events
-      FROM security_events
-      WHERE created_at > NOW() - INTERVAL '24 hours'
-    `);
+    let securityStats;
+    try {
+      securityStats = await pool.query(`
+        SELECT 
+          COUNT(*) as total_events,
+          COUNT(*) FILTER (WHERE severity = 'critical') as critical_events,
+          COUNT(*) FILTER (WHERE severity = 'high') as high_events,
+          COUNT(*) FILTER (WHERE resolved = false) as unresolved_events
+        FROM security_events
+        WHERE created_at > NOW() - INTERVAL '24 hours'
+      `);
+    } catch (error) {
+      securityStats = { rows: [{ total_events: 0, critical_events: 0, high_events: 0, unresolved_events: 0 }] };
+    }
 
     // Статистика системы
     const dbStats = await databaseMonitoringService.getConnectionStats();
@@ -144,7 +154,10 @@ router.get('/dashboard', requireOwnerMode, async (req: AuthRequest, res: Respons
     });
   } catch (error) {
     logger.error('Error getting dashboard data:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get dashboard data' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: 'Failed to get dashboard data',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
@@ -518,19 +531,29 @@ router.get('/audit/logs', requireOwnerMode, async (req: AuthRequest, res: Respon
 router.get('/realtime/stats', requireOwnerMode, async (req: AuthRequest, res: Response) => {
   try {
     // Активные пользователи (последние 5 минут)
-    const activeUsers = await pool.query(`
-      SELECT COUNT(DISTINCT user_id) as count
-      FROM search_history
-      WHERE searched_at > NOW() - INTERVAL '5 minutes'
-    `);
+    let activeUsers;
+    try {
+      activeUsers = await pool.query(`
+        SELECT COUNT(DISTINCT user_id) as count
+        FROM search_history
+        WHERE searched_at > NOW() - INTERVAL '5 minutes'
+      `);
+    } catch (error) {
+      activeUsers = { rows: [{ count: 0 }] };
+    }
 
     // Последние поиски
-    const recentSearches = await pool.query(`
-      SELECT query, searched_at, user_id
-      FROM search_history
-      ORDER BY searched_at DESC
-      LIMIT 10
-    `);
+    let recentSearches;
+    try {
+      recentSearches = await pool.query(`
+        SELECT query, searched_at, user_id
+        FROM search_history
+        ORDER BY searched_at DESC
+        LIMIT 10
+      `);
+    } catch (error) {
+      recentSearches = { rows: [] };
+    }
 
     // Последние регистрации
     const recentRegistrations = await pool.query(`
@@ -541,13 +564,16 @@ router.get('/realtime/stats', requireOwnerMode, async (req: AuthRequest, res: Re
     `);
 
     res.json({
-      activeUsers: activeUsers.rows[0].count,
+      activeUsers: activeUsers.rows[0]?.count || 0,
       recentSearches: recentSearches.rows,
       recentRegistrations: recentRegistrations.rows,
     });
   } catch (error) {
     logger.error('Error getting realtime stats:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get realtime stats' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: 'Failed to get realtime stats',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
