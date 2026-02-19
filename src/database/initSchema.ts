@@ -353,7 +353,7 @@ async function runMigrations() {
       WHERE email = 'semenbrut007@yandex.ru' AND role != 'owner'
       RETURNING id, email, role;
     `);
-    if (ownerResult.rowCount > 0) {
+    if (ownerResult.rowCount && ownerResult.rowCount > 0) {
       logger.info(`  ✓ Owner role granted to ${ownerResult.rows[0].email}`);
     }
     
