@@ -635,6 +635,24 @@ router.get('/backup/instant', requireOwnerMode, async (req: AuthRequest, res: Re
       });
     }
 
+    // Сохраняем статистику скачивания в БД
+    try {
+      await pool.query(
+        `INSERT INTO backups (backup_id, filename, size, created_by, created_at, components)
+         VALUES ($1, $2, $3, $4, NOW(), $5)`,
+        [
+          backup.filename.replace('.zip', ''),
+          backup.filename,
+          0, // Размер неизвестен до завершения
+          req.userId,
+          JSON.stringify(['database', 'redis', 'config', 'schema'])
+        ]
+      );
+    } catch (dbError) {
+      logger.warn('Failed to save backup stats:', dbError);
+      // Продолжаем даже если не удалось сохранить статистику
+    }
+
     // Устанавливаем headers для скачивания
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${backup.filename}"`);
