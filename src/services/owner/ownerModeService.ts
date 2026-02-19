@@ -51,6 +51,8 @@ class OwnerModeService {
     deviceFingerprint: string
   ): Promise<{ success: boolean; sessionId?: string; expiresAt?: Date; error?: string }> {
     try {
+      logger.info(`[OwnerMode] Step 1: Checking if user ${userId} is owner`);
+      
       // Проверка что пользователь - владелец
       const isOwner = await this.isOwner(userId);
       if (!isOwner) {
@@ -58,6 +60,8 @@ class OwnerModeService {
         return { success: false, error: 'Access denied' };
       }
 
+      logger.info(`[OwnerMode] Step 2: Getting TOTP secret for user ${userId}`);
+      
       // Получение TOTP секрета
       const totpResult = await pool.query(
         'SELECT secret FROM two_factor_auth WHERE user_id = $1 AND enabled = true',
@@ -65,9 +69,12 @@ class OwnerModeService {
       );
 
       if (totpResult.rows.length === 0) {
+        logger.warn(`[OwnerMode] No 2FA found for user ${userId}`);
         return { success: false, error: '2FA not enabled' };
       }
 
+      logger.info(`[OwnerMode] Step 3: Verifying TOTP code`);
+      
       // Проверка TOTP кода
       const secret = totpResult.rows[0].secret;
       const verified = speakeasy.totp.verify({
@@ -82,6 +89,8 @@ class OwnerModeService {
         return { success: false, error: 'Invalid TOTP code' };
       }
 
+      logger.info(`[OwnerMode] Step 4: Creating session`);
+      
       // Создание сессии
       const sessionId = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + this.SESSION_DURATION);
@@ -96,26 +105,40 @@ class OwnerModeService {
         deviceFingerprint,
       };
 
+      logger.info(`[OwnerMode] Step 5: Saving to Redis`);
+      
       // Сохранение в Redis
-      await redisClient.setEx(
-        `${this.REDIS_PREFIX}${sessionId}`,
-        this.SESSION_DURATION / 1000,
-        JSON.stringify(session)
-      );
+      try {
+        await redisClient.setEx(
+          `${this.REDIS_PREFIX}${sessionId}`,
+          this.SESSION_DURATION / 1000,
+          JSON.stringify(session)
+        );
+      } catch (redisError) {
+        logger.error(`[OwnerMode] Redis error:`, redisError);
+        return { success: false, error: 'Failed to create session' };
+      }
 
+      logger.info(`[OwnerMode] Step 6: Logging to audit_logs`);
+      
       // Логирование активации
-      await pool.query(
-        `INSERT INTO audit_logs (user_id, action, resource, details, ip_address, user_agent)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          userId,
-          'OWNER_MODE_ACTIVATED',
-          'owner_mode',
-          JSON.stringify({ sessionId, expiresAt }),
-          ipAddress,
-          userAgent,
-        ]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO audit_logs (user_id, action, resource, details, ip_address, user_agent)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            userId,
+            'OWNER_MODE_ACTIVATED',
+            'owner_mode',
+            JSON.stringify({ sessionId, expiresAt }),
+            ipAddress,
+            userAgent,
+          ]
+        );
+      } catch (auditError) {
+        logger.error(`[OwnerMode] Audit log error:`, auditError);
+        // Не критично, продолжаем
+      }
 
       logger.info(`Owner mode activated for user ${userId}, session: ${sessionId}`);
 

@@ -47,6 +47,8 @@ router.post('/activate', async (req: AuthRequest, res: Response) => {
     const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
+    logger.info(`Owner activation attempt: userId=${userId}, totpCode=${totpCode?.length} digits`);
+
     const result = await ownerModeService.activateOwnerMode(
       userId,
       totpCode,
@@ -56,6 +58,7 @@ router.post('/activate', async (req: AuthRequest, res: Response) => {
     );
 
     if (!result.success) {
+      logger.warn(`Owner activation failed: ${result.error}`);
       return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: result.error });
     }
 
@@ -66,7 +69,10 @@ router.post('/activate', async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     logger.error('Error activating owner mode:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to activate owner mode' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      error: 'Failed to activate owner mode',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
