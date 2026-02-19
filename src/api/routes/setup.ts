@@ -189,4 +189,53 @@ router.post('/fix-owner-constraint', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Проверка полного статуса owner
+ */
+router.post('/check-owner-status', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    
+    // Проверяем пользователя
+    const userResult = await pool.query(`
+      SELECT id, email, role, email_verified, account_locked, totp_secret
+      FROM users 
+      WHERE email = $1
+    `, [email]);
+    
+    if (userResult.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Проверяем two_factor_auth
+    const totpResult = await pool.query(`
+      SELECT enabled, secret IS NOT NULL as has_secret, created_at
+      FROM two_factor_auth
+      WHERE user_id = $1
+    `, [user.id]);
+    
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        email_verified: user.email_verified,
+        account_locked: user.account_locked,
+        has_totp_in_users: user.totp_secret !== null
+      },
+      two_factor_auth: totpResult.rows[0] || null
+    });
+    
+  } catch (error) {
+    logger.error('Check owner status error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default router;
