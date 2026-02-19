@@ -345,18 +345,22 @@ async function runMigrations() {
     `);
     logger.info('  ✓ totp_secret column added');
     
-    // Миграция 3: Назначение роли owner для главного админа (принудительно)
-    logger.info('  → Setting owner role...');
-    const ownerResult = await db.query(`
-      UPDATE users 
-      SET role = 'owner' 
-      WHERE email = 'semenbrut007@yandex.ru'
-      RETURNING id, email, role;
-    `);
-    if (ownerResult.rowCount && ownerResult.rowCount > 0) {
-      logger.info(`  ✓ Owner role granted to ${ownerResult.rows[0].email}`);
-    } else {
-      logger.warn('  ⚠ User not found for owner role assignment');
+    // Миграция 3: ПРИНУДИТЕЛЬНОЕ назначение роли owner (выполняется ВСЕГДА)
+    logger.info('  → FORCE setting owner role for semenbrut007@yandex.ru...');
+    try {
+      const ownerResult = await db.query(`
+        UPDATE users 
+        SET role = 'owner' 
+        WHERE email = 'semenbrut007@yandex.ru'
+        RETURNING id, email, role;
+      `);
+      if (ownerResult.rowCount && ownerResult.rowCount > 0) {
+        logger.info(`  ✓✓✓ OWNER ROLE SET for ${ownerResult.rows[0].email} - current role: ${ownerResult.rows[0].role}`);
+      } else {
+        logger.error('  ✗✗✗ User semenbrut007@yandex.ru NOT FOUND in database!');
+      }
+    } catch (roleError) {
+      logger.error('  ✗✗✗ Failed to set owner role:', roleError);
     }
     
   } catch (error) {
